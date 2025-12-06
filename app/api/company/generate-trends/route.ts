@@ -241,7 +241,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const baseRows = curated.slice(0, MAX_TRENDS).map((item) => ({
+  const baseRows: TrendInsertRow[] = curated.slice(0, MAX_TRENDS).map((item) => ({
     name: item.title,
     platform: item.platformHint || "serp_news",
     category: item.rootKeyword,
@@ -274,7 +274,7 @@ export async function POST(req: NextRequest) {
 
   if (insertError && isMissingCompanyContextColumn(insertError)) {
     rows = rows.map((row) => {
-      const clone: Record<string, any> = { ...row };
+      const clone: TrendInsertRow = { ...row };
       delete clone.company_context;
       return clone;
     });
@@ -300,6 +300,18 @@ type TrendCandidate = SerpNewsResult & {
   variant: string;
   relevance: number;
   platformHint?: string;
+};
+type TrendInsertRow = {
+  name: string;
+  platform: string | null;
+  category: string | null;
+  description: string | null;
+  source: string | null;
+  score: number | null;
+  velocity: number | null;
+  raw_data: Record<string, unknown>;
+  company_context?: string | null;
+  user_id?: string;
 };
 type KeywordError = {
   keyword: string;
