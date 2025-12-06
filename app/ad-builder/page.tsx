@@ -135,14 +135,7 @@ export default function AdBuilderPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-10 pb-20">
-      {/* Progress Bar */}
-      <div className="flex justify-center">
-        <div className="inline-flex items-center rounded-full bg-black px-6 py-3 text-white shadow-pill">
-          <span className="text-xl font-bold">2</span>
-          <div className="mx-4 h-6 w-0.5 bg-white/30" />
-          <span className="text-xl font-bold text-white/50">5</span>
-        </div>
-      </div>
+      
 
       <div className="text-center">
         <h1 className="text-5xl font-black text-ink tracking-tight">Ad Builder</h1>
@@ -152,7 +145,7 @@ export default function AdBuilderPage() {
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-5">
         <form onSubmit={handleSubmit} className="relative lg:col-span-3">
            {/* Background Blob for Form */}
-           <div className="absolute inset-0 translate-x-3 translate-y-3 rounded-[2.5rem] bg-mustard border-3 border-black" />
+           <div className="absolute inset-0 translate-x-3 translate-y-3 rounded-[2.5rem] bg-mustard border-3 border-black " />
            
            <div className="relative space-y-6 rounded-[2.5rem] border-3 border-black bg-white p-8">
             <div className="space-y-1">

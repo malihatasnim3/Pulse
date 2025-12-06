@@ -2,6 +2,8 @@ import { createServerSupabaseClient } from "@/lib/supabase";
 import { AdHistoryClient } from "@/components/ad-history/AdHistoryClient";
 import type { AdGeneration, AdProject } from "@/types/db";
 
+export const revalidate = 0;
+
 export default async function AdHistoryPage() {
   const supabase = createServerSupabaseClient();
 

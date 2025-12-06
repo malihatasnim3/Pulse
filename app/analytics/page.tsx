@@ -3,6 +3,8 @@ import { generateAnalyticsInsights } from "@/lib/analytics-insights";
 import { clusterColors, extractColorsFromAds } from "@/lib/color-utils";
 import { AnalyticsClient } from "@/components/analytics/AnalyticsClient";
 
+export const revalidate = 0;
+
 export default async function AnalyticsPage() {
   const supabase = createServerSupabaseClient();
 

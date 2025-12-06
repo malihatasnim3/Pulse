@@ -3,6 +3,8 @@ import type { CreativePattern, TrendTopic } from "@/types/db";
 import { TrendsClient } from "@/components/trends/TrendsClient";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase";
 
+export const revalidate = 0;
+
 export default async function TrendsPage() {
   const supabase = createServiceRoleSupabaseClient();
 
