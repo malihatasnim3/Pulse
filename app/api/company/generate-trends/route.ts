@@ -3,7 +3,7 @@ import { z } from "zod";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase";
 import { fetchSerpNews, type SerpNewsResult } from "@/lib/trends/serp";
-import { fetchGoogleTrendsForKeywords } from "@/lib/trends/googleTrends";
+import { fetchGoogleTrendsForKeywords, fetchRelatedSearches } from "@/lib/trends/googleTrends";
 import type { CompanyProfile } from "@/types/db";
 import { buildCompanyProfileUpsert, hydrateCompanyProfile } from "@/lib/companyProfile";
 
@@ -24,6 +24,10 @@ const schema = z.object({
     .partial()
     .optional()
 });
+
+  const MAX_TRENDS = 18;
+  const MAX_TRENDS_PER_KEYWORD = 3;
+  const SERP_RESULTS_PER_VARIANT = 8;
 
 const QUERY_PLANNER_PROMPT = (profile: CompanyProfile & { targeted_keywords: string[]; target_markets: string[] }) => `You are a trend researcher helping a marketing AI.
 Company: ${profile.company_name}
@@ -180,12 +184,12 @@ export async function POST(req: NextRequest) {
     keywordErrors
   } = await collectKeywordTrends(keywordQueries, resolvedProfile);
 
-  let curated = dedupeAndRank(harvestedItems, 12);
+  let curated = curateKeywordTrends(harvestedItems, keywordQueries, MAX_TRENDS, MAX_TRENDS_PER_KEYWORD);
   let usedFallback = false;
 
   if (curated.length === 0) {
     const fallbackItems = await collectGoogleTrendFallback(keywordQueries, resolvedProfile);
-    curated = dedupeAndRank(fallbackItems, 12);
+    curated = dedupeAndRank(fallbackItems, MAX_TRENDS);
     usedFallback = curated.length > 0;
   }
 
@@ -200,6 +204,22 @@ export async function POST(req: NextRequest) {
       },
       { status: 502 }
     );
+  }
+
+  if (usedFallback) {
+    const fallbackHitSet = new Set(curated.map((item) => item.rootKeyword));
+    const seen = new Set(usedKeywords);
+    curated.forEach((item) => {
+      if (!seen.has(item.rootKeyword)) {
+        seen.add(item.rootKeyword);
+        usedKeywords.push(item.rootKeyword);
+      }
+    });
+    for (let i = failedKeywords.length - 1; i >= 0; i--) {
+      if (fallbackHitSet.has(failedKeywords[i])) {
+        failedKeywords.splice(i, 1);
+      }
+    }
   }
 
   let userColumnAvailable = true;
@@ -219,19 +239,20 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const baseRows = curated.slice(0, 12).map((item) => ({
+  const baseRows = curated.slice(0, MAX_TRENDS).map((item) => ({
     name: item.title,
     platform: item.platformHint || "serp_news",
-    category: item.query,
+    category: item.rootKeyword,
     description: item.snippet,
-    source: item.source || "SERP",
+    source: resolveSource(item),
     score: item.relevance,
     velocity: null,
     raw_data: {
       link: item.link,
       date: item.date,
       thumbnail: item.thumbnail,
-      keyword: item.query,
+      keyword: item.rootKeyword,
+      variant_query: item.query,
       planner_context: planned.context,
       user_id: userId,
       relevance: item.relevance
@@ -272,6 +293,7 @@ export async function POST(req: NextRequest) {
 }
 
 type TrendCandidate = SerpNewsResult & {
+  rootKeyword: string;
   query: string;
   variant: string;
   relevance: number;
@@ -279,6 +301,7 @@ type TrendCandidate = SerpNewsResult & {
 };
 type KeywordError = {
   keyword: string;
+  variant?: string;
   message: string;
 };
 async function collectKeywordTrends(
@@ -289,33 +312,55 @@ async function collectKeywordTrends(
   const usedKeywords: string[] = [];
   const failedKeywords: string[] = [];
   const keywordErrors: KeywordError[] = [];
+  const variantCache = new Map<string, string[]>();
 
   for (const keyword of keywords) {
-    try {
-      const news = await fetchSerpNews(keyword, 5);
-      if (news.length > 0) {
-        usedKeywords.push(keyword);
-        items.push(
-          ...news.map((result) => ({
-            ...result,
-            query: keyword,
-            variant: keyword,
-            relevance: scoreSerpTrend(result, profile, keyword),
-            platformHint: "serp_news"
-          }))
-        );
-      } else {
-        failedKeywords.push(keyword);
-        keywordErrors.push({ keyword, message: "SERP returned no articles." });
+    const variants = await getKeywordVariants(keyword, variantCache);
+    let keywordHit = false;
+
+    for (const variant of variants) {
+      try {
+        const news = await fetchSerpNews(variant, SERP_RESULTS_PER_VARIANT);
+        if (news.length > 0) {
+          if (!keywordHit) {
+            usedKeywords.push(keyword);
+            keywordHit = true;
+          }
+          items.push(
+            ...news.map((result) => ({
+              ...result,
+              rootKeyword: keyword,
+              query: variant,
+              variant,
+              relevance: scoreSerpTrend(result, profile, variant),
+              platformHint: "serp_news"
+            }))
+          );
+        } else {
+          keywordErrors.push({ keyword, variant, message: "SERP returned no articles." });
+        }
+      } catch (err) {
+        keywordErrors.push({ keyword, variant, message: (err as Error)?.message || "Unknown SERP error" });
+        console.warn("[company/generate-trends] serp fetch failed", { keyword, variant, err });
       }
-    } catch (err) {
+    }
+
+    if (!keywordHit) {
       failedKeywords.push(keyword);
-      keywordErrors.push({ keyword, message: (err as Error)?.message || "Unknown SERP error" });
-      console.warn("[company/generate-trends] serp fetch failed", { keyword, err });
     }
   }
 
   return { items, usedKeywords, failedKeywords, keywordErrors };
+}
+
+async function getKeywordVariants(keyword: string, cache: Map<string, string[]>) {
+  if (cache.has(keyword)) {
+    return cache.get(keyword)!;
+  }
+  const related = await fetchRelatedSearches(keyword, 4);
+  const variants = uniqueStrings([keyword, ...related]).slice(0, 5);
+  cache.set(keyword, variants);
+  return variants;
 }
 
 async function collectGoogleTrendFallback(
@@ -337,12 +382,14 @@ async function collectGoogleTrendFallback(
           source: topic.source || "google_trends",
           date: new Date().toISOString()
         };
+        const rootKeyword = matchedKeyword ?? keywords.find((kw) => title.toLowerCase().includes(kw.toLowerCase())) ?? title;
         return {
           ...pseudoResult,
-          query: matchedKeyword ?? title,
-          variant: "google_trends",
+          rootKeyword,
+          query: title,
+          variant: title,
           platformHint: topic.platform || topic.source || "google_trends",
-          relevance: scoreSerpTrend(pseudoResult, profile, matchedKeyword ?? title)
+          relevance: scoreSerpTrend(pseudoResult, profile, rootKeyword)
         } satisfies TrendCandidate;
       });
   } catch (err) {
@@ -367,17 +414,96 @@ function deriveLink(raw: unknown) {
   );
 }
 
+function curateKeywordTrends(
+  items: TrendCandidate[],
+  keywordPriority: string[],
+  maxItems: number,
+  perKeywordLimit: number
+) {
+  if (!items.length || maxItems <= 0) return [];
+
+  const grouped = new Map<string, TrendCandidate[]>();
+  for (const item of items) {
+    const bucket = grouped.get(item.rootKeyword) ?? [];
+    bucket.push(item);
+    grouped.set(item.rootKeyword, bucket);
+  }
+
+  for (const [key, bucket] of grouped.entries()) {
+    bucket.sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0));
+    grouped.set(key, bucket);
+  }
+
+  const orderedKeywords = [
+    ...keywordPriority.filter((keyword) => grouped.has(keyword)),
+    ...Array.from(grouped.keys()).filter((keyword) => !keywordPriority.includes(keyword))
+  ];
+
+  const perKeywordCounts = new Map<string, number>();
+  const indices = new Map<string, number>();
+  const seen = new Set<string>();
+  const selection: TrendCandidate[] = [];
+
+  while (selection.length < maxItems) {
+    let addedThisRound = false;
+    for (const keyword of orderedKeywords) {
+      const bucket = grouped.get(keyword);
+      if (!bucket?.length) continue;
+      if ((perKeywordCounts.get(keyword) ?? 0) >= perKeywordLimit) continue;
+
+      let idx = indices.get(keyword) ?? 0;
+      while (idx < bucket.length && seen.has(trendKey(bucket[idx]))) {
+        idx += 1;
+      }
+      if (idx >= bucket.length) {
+        indices.set(keyword, idx);
+        continue;
+      }
+
+      const candidate = bucket[idx];
+      selection.push(candidate);
+      seen.add(trendKey(candidate));
+      perKeywordCounts.set(keyword, (perKeywordCounts.get(keyword) ?? 0) + 1);
+      indices.set(keyword, idx + 1);
+      addedThisRound = true;
+
+      if (selection.length >= maxItems) break;
+    }
+
+    if (!addedThisRound) break;
+  }
+
+  if (selection.length < maxItems) {
+    const remaining = items
+      .slice()
+      .sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0))
+      .filter((candidate) => !seen.has(trendKey(candidate)));
+    for (const candidate of remaining) {
+      selection.push(candidate);
+      seen.add(trendKey(candidate));
+      if (selection.length >= maxItems) break;
+    }
+  }
+
+  return selection.slice(0, maxItems);
+}
+
 function dedupeAndRank(items: TrendCandidate[], maxItems: number) {
   const seen = new Set<string>();
   return items
     .sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0))
     .filter((item) => {
-      const key = item.title.toLowerCase();
+      const key = trendKey(item);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     })
     .slice(0, maxItems);
+}
+
+function trendKey(item: Pick<TrendCandidate, "title" | "link" | "rootKeyword" | "query">) {
+  const fallback = `${item.rootKeyword}:${item.query}`;
+  return (item.title || item.link || fallback).toLowerCase();
 }
 
 function scoreSerpTrend(
@@ -398,6 +524,12 @@ function scoreSerpTrend(
   if (query.toLowerCase().includes("trend")) score += 2;
   score += freshnessScore(item.date);
   return Math.min(100, Math.round(score));
+}
+
+function resolveSource(item: TrendCandidate) {
+  if (item.source) return item.source;
+  if (item.platformHint && item.platformHint.includes("google")) return "Google Trends";
+  return "SERP";
 }
 
 function freshnessScore(dateInput?: string) {

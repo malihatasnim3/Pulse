@@ -1,5 +1,5 @@
-import googleTrends from "google-trends-api";
 import { NormalizedTrendTopic } from "./types";
+import googleTrends from "google-trends-api";
 
 export async function fetchGoogleTrendsForKeywords(keywords: string[]): Promise<NormalizedTrendTopic[]> {
   const results: NormalizedTrendTopic[] = [];
@@ -52,4 +52,22 @@ export async function fetchGoogleTrendsForKeywords(keywords: string[]): Promise<
   }
 
   return results;
+}
+
+export async function fetchRelatedSearches(keyword: string, limit = 5): Promise<string[]> {
+  if (!keyword?.trim()) return [];
+  try {
+    const raw = await googleTrends.relatedQueries({ keyword, geo: "US" });
+    const parsed = JSON.parse(raw || "{}");
+    const rankedLists: any[] = parsed?.default?.rankedList || [];
+    const firstList = rankedLists[0]?.rankedKeyword || [];
+    const related = firstList
+      .map((entry: any) => String(entry?.query ?? ""))
+      .filter(Boolean)
+      .slice(0, limit);
+    return related;
+  } catch (err) {
+    console.error(`[googleTrends] relatedQueries failed for ${keyword}`, err);
+    return [];
+  }
 }

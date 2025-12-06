@@ -72,39 +72,54 @@ export function TrendsClient({ trends, patterns }: Props) {
     let cancelled = false;
     const checkProfile = async () => {
       setCheckingProfile(true);
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
-      if (!session?.user) {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        const session = data.session;
+        if (!session?.user) {
+          if (!cancelled && mountedRef.current) {
+            setUserId(null);
+            setProfileReady(false);
+            setTrendItems([]);
+          }
+          return;
+        }
+
         if (!cancelled && mountedRef.current) {
-          setUserId(null);
-          setProfileReady(false);
-          setTrendItems([]);
+          setUserId(session.user.id);
         }
-        setCheckingProfile(false);
-        return;
-      }
-      if (!cancelled && mountedRef.current) {
-        setUserId(session.user.id);
-      }
 
-      const { data: profileRow, error } = await supabase
-        .from("company_profiles")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
+        const { data: profileRow, error: profileError } = await supabase
+          .from("company_profiles")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
 
-      if (!cancelled && mountedRef.current) {
+        let profileIsComplete = false;
         const profile = hydrateCompanyProfile(profileRow as any);
-        if (error || !profile) {
-          setProfileReady(false);
-        } else {
-          setProfileReady(isProfileComplete(profile));
+        if (!cancelled && mountedRef.current) {
+          if (profileError) {
+            console.warn("[trends] profile fetch failed", profileError);
+            setProfileReady(false);
+            setTrendError((prev) => prev ?? profileError.message);
+          } else {
+            profileIsComplete = profile ? isProfileComplete(profile) : false;
+            setProfileReady(profileIsComplete);
+          }
         }
-        setCheckingProfile(false);
-      }
 
-      if (!cancelled) {
-        await loadTrends(session.user.id);
+        if (!cancelled && profileIsComplete) {
+          await loadTrends(session.user.id);
+        }
+      } catch (err: any) {
+        if (!cancelled && mountedRef.current) {
+          setProfileReady(false);
+          setTrendError(err?.message || "Unable to load company profile.");
+        }
+      } finally {
+        if (!cancelled && mountedRef.current) {
+          setCheckingProfile(false);
+        }
       }
     };
     checkProfile();
