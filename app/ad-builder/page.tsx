@@ -6,10 +6,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AdVariantCard } from "@/components/AdVariantCard";
 import { Confetti } from "@/components/Confetti";
-import { hydrateCompanyProfile } from "@/lib/companyProfile";
 import type { GenerateAdSuiteResult } from "@/lib/llm";
 import Link from "next/link";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
+import { hydrateCompanyProfile } from "@/lib/companyProfile";
 import { m } from "framer-motion";
 
 type FormState = {

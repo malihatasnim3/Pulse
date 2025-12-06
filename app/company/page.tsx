@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Save, AlertCircle, RefreshCcw, Sparkles, Upload, Trash2 } from "lucide-react";
-import { createBrowserSupabaseClient } from "@/lib/supabase";
+import { AlertCircle, Loader2, RefreshCcw, Save, Sparkles, Trash2, Upload } from "lucide-react";
 import type { CompanyProfile, TrendTopic } from "@/types/db";
 import { buildCompanyProfileUpsert, hydrateCompanyProfile } from "@/lib/companyProfile";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { createBrowserSupabaseClient } from "@/lib/supabase";
 
 const defaultProfile: CompanyProfileForm = {
   company_name: "",
