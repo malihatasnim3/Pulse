@@ -38,9 +38,9 @@ export function ProductImageUploader({ value, onChange }: Props) {
   };
 
   return (
-    <div className="space-y-3 rounded-xl border border-dashed border-black/10 bg-white/50 p-4">
-      <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-punch px-3 py-2 text-sm font-semibold text-white shadow-pill hover:brightness-105">
-        <Upload className="h-4 w-4" />
+    <div className="space-y-3 rounded-2xl border-3 border-black bg-white p-5 shadow-none">
+      <label className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border-3 border-black bg-mustard px-4 py-3 text-lg font-bold text-black shadow-hard-sm transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none hover:brightness-105">
+        <Upload className="h-5 w-5" />
         <span>{uploading ? "Uploading..." : "Upload product images"}</span>
         <input
           type="file"
@@ -53,9 +53,11 @@ export function ProductImageUploader({ value, onChange }: Props) {
       </label>
 
       {value.length > 0 && (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-3">
           {value.map((url) => (
-            <img key={url} src={url} alt="Product" className="h-24 w-full rounded-md object-cover" />
+            <div key={url} className="relative overflow-hidden rounded-xl border-3 border-black">
+              <img src={url} alt="Product" className="h-24 w-full object-cover" />
+            </div>
           ))}
         </div>
       )}
