@@ -1,7 +1,7 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Buffer } from "node:buffer";
-import { createServiceRoleSupabaseClient } from "./supabase";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createServiceRoleSupabaseClient } from "./supabase";
 
 export type TrendSummary = {
   name: string;
@@ -234,8 +234,11 @@ function parseJsonResponse(raw: string): GenerateAdSuiteResult {
 async function ensureBucketExists(client: SupabaseClient, bucket: string) {
   const { data, error } = await client.storage.getBucket(bucket);
   if (data) return;
-  const isNotFound = error && (error.status === 404 || error.statusCode === "404");
-  const isForbidden = error && (error.status === 403 || error.statusCode === "403");
+  const storageError = (error ?? null) as { status?: number; statusCode?: string } | null;
+  const status = typeof storageError?.status === "number" ? storageError.status : undefined;
+  const statusCode = storageError?.statusCode;
+  const isNotFound = status === 404 || statusCode === "404";
+  const isForbidden = status === 403 || statusCode === "403";
   if (isForbidden) {
     console.warn("[generateAdSuite] bucket lookup forbidden, assuming bucket exists", { bucket });
     return;
