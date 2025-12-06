@@ -9,8 +9,8 @@ export default async function AnalyticsPage() {
     .from("ad_generations")
     .select("*", { count: "exact", head: true });
 
-  const { data: platformRows = [] } = await supabase.from("ad_generations").select("platform");
-  const generationsByPlatform = platformRows.reduce<Record<string, number>>((acc, row) => {
+  const { data: platformRows } = await supabase.from("ad_generations").select("platform");
+  const generationsByPlatform = (platformRows ?? []).reduce<Record<string, number>>((acc, row) => {
     const key = row.platform || "unknown";
     acc[key] = (acc[key] || 0) + 1;
     return acc;
