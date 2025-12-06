@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
+import { hydrateCompanyProfile } from "@/lib/companyProfile";
 import { m } from "framer-motion";
 
 type Props = {
@@ -31,13 +32,14 @@ export function TrendsClient({ trends, patterns }: Props) {
         }
         return;
       }
-      const { data: profile, error } = await supabase
+      const { data: profileRow, error } = await supabase
         .from("company_profiles")
         .select("*")
         .eq("user_id", session.user.id)
-        .maybeSingle<CompanyProfile>();
+        .maybeSingle();
 
       if (!cancelled) {
+        const profile = hydrateCompanyProfile(profileRow as any);
         if (error || !profile) {
           setProfileReady(false);
         } else {

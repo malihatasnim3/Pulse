@@ -4,6 +4,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase";
 import { fetchSerpNews } from "@/lib/trends/serp";
 import type { CompanyProfile } from "@/types/db";
+import { buildCompanyProfileUpsert, hydrateCompanyProfile } from "@/lib/companyProfile";
 
 const schema = z.object({
   userId: z.string().uuid(),
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest) {
   const supabase = createServiceRoleSupabaseClient();
   const { userId, profile: profilePayload } = parsed.data;
 
-  const { data: profile, error: profileError } = await supabase
+  const { data: profileRow, error: profileError } = await supabase
     .from("company_profiles")
     .select("*")
     .eq("user_id", userId)
@@ -108,11 +109,12 @@ export async function POST(req: NextRequest) {
   if (profileError) {
     return NextResponse.json({ error: profileError.message }, { status: 500 });
   }
-  let resolvedProfile: (CompanyProfile & { targeted_keywords: string[]; target_markets: string[] }) | null = profile
+  const hydrated = hydrateCompanyProfile(profileRow as any);
+  let resolvedProfile: (CompanyProfile & { targeted_keywords: string[]; target_markets: string[] }) | null = hydrated
     ? {
-        ...profile,
-        targeted_keywords: profile.targeted_keywords ?? [],
-        target_markets: profile.target_markets ?? []
+        ...hydrated,
+        targeted_keywords: hydrated.targeted_keywords ?? [],
+        target_markets: hydrated.target_markets ?? []
       }
     : null;
 
@@ -133,18 +135,19 @@ export async function POST(req: NextRequest) {
     resolvedProfile = fallbackProfile;
 
     try {
-      await supabase.from("company_profiles").upsert({
-        user_id: userId,
+      const upsertPayload = buildCompanyProfileUpsert(userId, {
         company_name: fallbackProfile.company_name,
         tagline: fallbackProfile.tagline,
         mission_statement: fallbackProfile.mission_statement,
-        brand_voice: fallbackProfile.brand_voice,
         company_description: fallbackProfile.company_description,
-        targeted_keywords: fallbackProfile.targeted_keywords,
-        target_markets: fallbackProfile.target_markets,
-        brand_colors: fallbackProfile.brand_colors,
-        platform_preference: fallbackProfile.platform_preference
+        brand_voice: fallbackProfile.brand_voice ?? "Conversational",
+        brand_colors: fallbackProfile.brand_colors ?? [],
+        targeted_keywords: fallbackProfile.targeted_keywords ?? [],
+        target_markets: fallbackProfile.target_markets ?? [],
+        brand_guidelines_url: fallbackProfile.brand_guidelines_url ?? null,
+        platform_preference: fallbackProfile.platform_preference ?? "tiktok"
       });
+      await supabase.from("company_profiles").upsert(upsertPayload);
     } catch (err) {
       console.warn("[company/generate-trends] fallback upsert failed", err);
     }

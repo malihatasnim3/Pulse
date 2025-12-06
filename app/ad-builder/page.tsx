@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AdVariantCard } from "@/components/AdVariantCard";
 import { Confetti } from "@/components/Confetti";
+import { hydrateCompanyProfile } from "@/lib/companyProfile";
 import type { GenerateAdSuiteResult } from "@/lib/llm";
 import Link from "next/link";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
@@ -49,12 +50,12 @@ export default function AdBuilderPage() {
       const session = data.session;
       if (!session?.user) return;
       setUserId(session.user.id);
-      const [{ data: profile, error: profileError }, { data: productRows, error: productError }] = await Promise.all([
+      const [{ data: profileRow, error: profileError }, { data: productRows, error: productError }] = await Promise.all([
         supabase
           .from("company_profiles")
           .select("*")
           .eq("user_id", session.user.id)
-          .maybeSingle<CompanyProfile>(),
+          .maybeSingle(),
         supabase
           .from("product_profiles")
           .select("*")
@@ -65,10 +66,11 @@ export default function AdBuilderPage() {
       if (profileError) {
         setProfileStatus(profileError.message);
       }
-      if (profile) {
+      const hydratedProfile = hydrateCompanyProfile(profileRow as any);
+      if (hydratedProfile) {
         setProfileStatus("Company context loaded.");
       }
-      setCompanyProfile(profile || null);
+      setCompanyProfile(hydratedProfile);
 
       if (productError) {
         setProductStatus(productError.message);

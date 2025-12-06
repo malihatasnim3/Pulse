@@ -10,6 +10,7 @@ import {
 } from "@/lib/llm";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase";
 import type { CompanyProfile, CreativePattern, ProductProfile, TrendTopic } from "@/types/db";
+import { hydrateCompanyProfile } from "@/lib/companyProfile";
 
 const schema = z.object({
   campaignName: z.string().min(1),
@@ -33,15 +34,16 @@ export async function POST(req: NextRequest) {
   const { userId, productId, ...payload } = parsed.data;
 
   // 1) Fetch company + product context
-  const { data: companyProfile, error: companyError } = await supabase
+  const { data: companyRow, error: companyError } = await supabase
     .from("company_profiles")
     .select("*")
     .eq("user_id", userId)
-    .maybeSingle<CompanyProfile>();
+    .maybeSingle();
 
   if (companyError) {
     return NextResponse.json({ error: companyError.message }, { status: 500 });
   }
+  const companyProfile = hydrateCompanyProfile(companyRow as any);
   if (!companyProfile) {
     return NextResponse.json({ error: "Company profile not found. Save it first." }, { status: 400 });
   }

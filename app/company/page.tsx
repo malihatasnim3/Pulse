@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Save, AlertCircle, RefreshCcw, Sparkles, Upload, Trash2 } from "lucide-react";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
 import type { CompanyProfile, TrendTopic } from "@/types/db";
+import { buildCompanyProfileUpsert, hydrateCompanyProfile } from "@/lib/companyProfile";
 
 const defaultProfile: CompanyProfileForm = {
   company_name: "",
@@ -65,18 +66,21 @@ export default function CompanyPage() {
       if (error && error.code !== "PGRST116") {
         setStatus(error.message);
       } else if (data) {
-        setProfile({
-          company_name: data.company_name ?? "",
-          tagline: data.tagline ?? "",
-          mission_statement: data.mission_statement ?? "",
-          company_description: data.company_description ?? "",
-          brand_voice: data.brand_voice ?? "Conversational",
-          brand_colors: (data.brand_colors || []).join(", "),
-          target_markets: data.target_markets ?? [],
-          targeted_keywords: data.targeted_keywords ?? [],
-          brand_guidelines_url: data.brand_guidelines_url ?? null,
-          platform_preference: data.platform_preference ?? "tiktok"
-        });
+        const hydrated = hydrateCompanyProfile(data);
+        if (hydrated) {
+          setProfile({
+            company_name: hydrated.company_name ?? "",
+            tagline: hydrated.tagline ?? "",
+            mission_statement: hydrated.mission_statement ?? "",
+            company_description: hydrated.company_description ?? "",
+            brand_voice: hydrated.brand_voice ?? "Conversational",
+            brand_colors: (hydrated.brand_colors || []).join(", "),
+            target_markets: hydrated.target_markets ?? [],
+            targeted_keywords: hydrated.targeted_keywords ?? [],
+            brand_guidelines_url: hydrated.brand_guidelines_url ?? null,
+            platform_preference: hydrated.platform_preference ?? "tiktok"
+          });
+        }
       }
       setLoading(false);
     };
@@ -123,19 +127,19 @@ export default function CompanyPage() {
       .split(",")
       .map((c) => c.trim())
       .filter(Boolean);
-    const { error } = await supabase.from("company_profiles").upsert({
-      user_id: session.user.id,
+    const upsertPayload = buildCompanyProfileUpsert(session.user.id, {
       company_name: profile.company_name,
       tagline: profile.tagline,
       mission_statement: profile.mission_statement,
+      company_description: profile.company_description,
       brand_voice: profile.brand_voice,
       brand_colors: brandColors,
-      company_description: profile.company_description,
       targeted_keywords: profile.targeted_keywords,
       target_markets: profile.target_markets,
       brand_guidelines_url: profile.brand_guidelines_url,
       platform_preference: profile.platform_preference
     });
+    const { error } = await supabase.from("company_profiles").upsert(upsertPayload);
     if (error) {
       setStatus(error.message);
     } else {
