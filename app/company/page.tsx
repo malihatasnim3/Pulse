@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { Loader2, Save, AlertCircle } from "lucide-react";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
 import type { CompanyProfile } from "@/types/db";
@@ -104,9 +103,6 @@ export default function CompanyPage() {
           <h1 className="text-2xl font-semibold text-ink">Company profile</h1>
           <p className="text-sm text-black/60">Saved data will prefill the ad builder.</p>
         </div>
-        <Link href="/auth" className="text-sm font-semibold text-punch underline">
-          Auth →
-        </Link>
       </div>
 
       {loading && (
