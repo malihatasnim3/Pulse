@@ -18,7 +18,16 @@ export async function POST() {
     fetchRedditTopics(["marketing", "design", "technology"])
   ]);
 
-  const topics = [...googleTopics, ...youtubeTopics, ...redditTopics].filter((t) => Boolean(t.name));
+  // Merge and dedupe on name+platform to avoid ON CONFLICT double-hit
+  const deduped: Record<string, any> = {};
+  [...googleTopics, ...youtubeTopics, ...redditTopics].forEach((t) => {
+    if (!t.name) return;
+    const key = `${t.name}-${t.platform || "any"}`;
+    if (!deduped[key]) {
+      deduped[key] = t;
+    }
+  });
+  const topics = Object.values(deduped);
 
   if (topics.length === 0) {
     return NextResponse.json({ inserted: 0, message: "No trends fetched" }, { status: 200 });

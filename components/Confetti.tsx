@@ -28,13 +28,7 @@ export function Confetti() {
           style={{ backgroundColor: p.color }}
         />
       ))}
-      <m.div
-        initial={{ scale: 0, rotate: -10 }}
-        animate={{ scale: 1, rotate: 0 }}
-        className="absolute top-1/4 z-50 rounded-3xl border-4 border-black bg-white px-8 py-4 shadow-hard-lg"
-      >
-        <h1 className="text-4xl font-black text-success drop-shadow-sm">+$1.00</h1>
-      </m.div>
+      
     </div>
   );
 }

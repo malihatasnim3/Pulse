@@ -148,7 +148,8 @@ export async function POST(req: NextRequest) {
       projectId,
       strategy: aiResult.strategy,
       variants: aiResult.variants,
-      generationId: generation.id
+      generationId: generation.id,
+      trendsUsed: trends.map((t) => t.name)
     });
   } catch (err: any) {
     console.error("[generate-ad] failed", err);

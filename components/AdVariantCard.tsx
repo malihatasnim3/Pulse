@@ -8,9 +8,10 @@ import type { GeneratedAdVariant } from "@/lib/llm";
 type Props = {
   variant: GeneratedAdVariant;
   showPrompt?: boolean;
+  trendNames?: string[];
 };
 
-export function AdVariantCard({ variant, showPrompt = true }: Props) {
+export function AdVariantCard({ variant, showPrompt = true, trendNames }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -59,6 +60,12 @@ export function AdVariantCard({ variant, showPrompt = true }: Props) {
           <p className="font-black text-sm uppercase tracking-wide text-black/60">Why this works</p>
           <p className="mt-1 text-sm font-bold text-black">{variant.design_explanation}</p>
         </div>
+
+        {trendNames && trendNames.length > 0 && (
+          <div className="mt-3 rounded-xl border-2 border-black bg-white p-3 text-xs font-black text-black">
+            Trends targeted: <span className="font-semibold">{trendNames.slice(0, 6).join(", ")}</span>
+          </div>
+        )}
 
         {showPrompt && (
           <button
