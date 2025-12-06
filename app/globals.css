@@ -46,6 +46,10 @@ body {
   @apply w-full rounded-2xl border-3 border-black bg-white px-5 py-4 text-lg font-bold text-black placeholder:text-gray-400 focus:outline-none focus:ring-4 focus:ring-mustard/30;
 }
 
+.input-field-icon {
+  padding-left: 4.5rem;
+}
+
 .card-pop {
   @apply relative rounded-3xl border-3 border-black bg-white shadow-hard;
 }
