@@ -1,15 +1,12 @@
 "use client";
 
-import { m } from "framer-motion";
 import { Calendar, Palette } from "lucide-react";
 
-type AdVariant = {
-  variant_index?: number;
-  hook?: string;
-  body?: string;
-  cta?: string;
-  image_url?: string;
-  dominant_color?: string;
+import type { GeneratedAdVariant } from "@/lib/llm";
+import { m } from "framer-motion";
+
+type AdVariant = GeneratedAdVariant & {
+  dominant_color?: string | null;
 };
 
 type Props = {

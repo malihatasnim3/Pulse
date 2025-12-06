@@ -6,16 +6,10 @@ import { AdFilters } from "./AdFilters";
 import { AdCard } from "./AdCard";
 import { AdDetailsModal } from "./AdDetailsModal";
 import type { AdGeneration, AdProject } from "@/types/db";
+import type { GeneratedAdVariant } from "@/lib/llm";
 
-type AdVariant = {
-  variant_index?: number;
-  hook?: string;
-  body?: string;
-  cta?: string;
-  image_url?: string;
-  dominant_color?: string;
-  nano_visual_prompt?: string;
-  design_explanation?: string;
+type StoredAdVariant = GeneratedAdVariant & {
+  dominant_color?: string | null;
 };
 
 type Strategy = {
@@ -41,11 +35,13 @@ export function AdHistoryClient({ generations }: Props) {
 
   // Extract unique platforms and tones
   const platforms = useMemo(() => {
-    return [...new Set(generations.map((g) => g.platform).filter(Boolean))].sort();
+    const values = generations.map((g) => g.platform).filter((value): value is string => Boolean(value));
+    return [...new Set(values)].sort();
   }, [generations]);
 
   const tones = useMemo(() => {
-    return [...new Set(generations.map((g) => g.tone).filter(Boolean))].sort();
+    const values = generations.map((g) => g.tone).filter((value): value is string => Boolean(value));
+    return [...new Set(values)].sort();
   }, [generations]);
 
   // Filter generations
@@ -132,7 +128,7 @@ export function AdHistoryClient({ generations }: Props) {
         ) : (
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
             {visibleGenerations.map((gen, index) => {
-              const ads = Array.isArray(gen.ads) ? (gen.ads as AdVariant[]) : [];
+              const ads = normalizeVariants(gen.ads, gen.platform);
               const projectName = gen.project?.name || "Untitled Project";
               const productName = gen.project?.product || "Unknown Product";
 
@@ -178,10 +174,29 @@ export function AdHistoryClient({ generations }: Props) {
           platform={selectedAd.platform}
           tone={selectedAd.tone || "unknown"}
           createdAt={selectedAd.created_at}
-          ads={Array.isArray(selectedAd.ads) ? (selectedAd.ads as AdVariant[]) : []}
+          ads={normalizeVariants(selectedAd.ads, selectedAd.platform)}
           strategy={(selectedAd.strategy as Strategy) || {}}
         />
       )}
     </>
   );
+}
+
+function normalizeVariants(rawAds: unknown, fallbackPlatform: string): StoredAdVariant[] {
+  if (!Array.isArray(rawAds)) return [];
+  return rawAds.map((variant, index) => normalizeVariant(variant, fallbackPlatform, index));
+}
+
+function normalizeVariant(raw: any, fallbackPlatform: string, index: number): StoredAdVariant {
+  return {
+    variant_index: typeof raw?.variant_index === "number" ? raw.variant_index : index + 1,
+    platform: raw?.platform || fallbackPlatform || "meta",
+    hook: raw?.hook || "Untitled hook",
+    body: raw?.body || "No body provided.",
+    cta: raw?.cta || "Learn more",
+    nano_visual_prompt: raw?.nano_visual_prompt || "High-impact advertising visual prompt.",
+    design_explanation: raw?.design_explanation || "No rationale provided.",
+    image_url: typeof raw?.image_url === "string" ? raw.image_url : "",
+    dominant_color: raw?.dominant_color || null
+  } satisfies StoredAdVariant;
 }

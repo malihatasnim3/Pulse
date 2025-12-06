@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { m } from "framer-motion";
-import { TrendingUp, Sparkles } from "lucide-react";
 import type { CreativePattern, TrendTopic } from "@/types/db";
+import { Sparkles, TrendingUp } from "lucide-react";
+
+import { m } from "framer-motion";
+import { useState } from "react";
 
 type Props = {
   trends: TrendTopic[];
@@ -14,8 +15,14 @@ export function TrendsClient({ trends, patterns }: Props) {
   const [selectedPlatform, setSelectedPlatform] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
-  const platforms = ["all", ...new Set(trends.map((t) => t.platform).filter(Boolean))];
-  const categories = ["all", ...new Set(trends.map((t) => t.category).filter(Boolean))];
+  const platforms = [
+    "all",
+    ...new Set(trends.map((t) => t.platform).filter((value): value is string => Boolean(value)))
+  ];
+  const categories = [
+    "all",
+    ...new Set(trends.map((t) => t.category).filter((value): value is string => Boolean(value)))
+  ];
 
   const filteredTrends = trends.filter((trend) => {
     const matchesPlatform = selectedPlatform === "all" || trend.platform === selectedPlatform;

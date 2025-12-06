@@ -1,19 +1,10 @@
 "use client";
 
-import { m, AnimatePresence } from "framer-motion";
-import { X } from "lucide-react";
-import { AdVariantCard } from "@/components/AdVariantCard";
+import { AnimatePresence, m } from "framer-motion";
 
-type AdVariant = {
-  variant_index?: number;
-  hook?: string;
-  body?: string;
-  cta?: string;
-  image_url?: string;
-  dominant_color?: string;
-  nano_visual_prompt?: string;
-  design_explanation?: string;
-};
+import { AdVariantCard } from "@/components/AdVariantCard";
+import type { GeneratedAdVariant } from "@/lib/llm";
+import { X } from "lucide-react";
 
 type Strategy = {
   positioning?: string;
@@ -31,7 +22,7 @@ type Props = {
   platform: string;
   tone: string;
   createdAt: string;
-  ads: AdVariant[];
+  ads: GeneratedAdVariant[];
   strategy?: Strategy;
 };
 

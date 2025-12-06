@@ -1,10 +1,11 @@
 "use client";
 
-import { m } from "framer-motion";
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { StatCard } from "./StatCard";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+
 import { ChartCard } from "./ChartCard";
 import { InsightsCard } from "./InsightsCard";
+import { StatCard } from "./StatCard";
+import { m } from "framer-motion";
 
 type Props = {
   totalAds: number;
@@ -145,7 +146,7 @@ export function AnalyticsClient({
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent = 0 }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   outerRadius={100}
                   fill="#8884d8"
                   dataKey="value"
