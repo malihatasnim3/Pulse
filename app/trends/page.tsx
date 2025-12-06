@@ -1,15 +1,9 @@
-import { createServerSupabaseClient } from "@/lib/supabase";
+import type { CreativePattern } from "@/types/db";
 import { TrendsClient } from "@/components/TrendsClient";
-import type { CreativePattern, TrendTopic } from "@/types/db";
+import { createServerSupabaseClient } from "@/lib/supabase";
 
 export default async function TrendsPage() {
   const supabase = createServerSupabaseClient();
-
-  const { data: trends, error: trendsError } = await supabase
-    .from("trend_topics")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(30);
 
   const { data: patterns, error: patternsError } = await supabase
     .from("creative_patterns")
@@ -17,16 +11,12 @@ export default async function TrendsPage() {
     .order("created_at", { ascending: false })
     .limit(20);
 
-  if (trendsError) {
-    console.error("[/trends] trend_topics query failed", trendsError);
-  }
   if (patternsError) {
     console.error("[/trends] creative_patterns query failed", patternsError);
   }
-  console.log("[/trends] fetched", {
-    trends: trends?.length || 0,
+  console.log("[/trends] fetched patterns", {
     patterns: patterns?.length || 0
   });
 
-  return <TrendsClient trends={(trends as TrendTopic[]) || []} patterns={(patterns as CreativePattern[]) || []} />;
+  return <TrendsClient trends={[]} patterns={(patterns as CreativePattern[]) || []} />;
 }

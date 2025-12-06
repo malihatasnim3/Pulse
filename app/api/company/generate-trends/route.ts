@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase";
-import { fetchSerpNews } from "@/lib/trends/serp";
+import { fetchSerpNews, type SerpNewsResult } from "@/lib/trends/serp";
+import { fetchGoogleTrendsForKeywords } from "@/lib/trends/googleTrends";
 import type { CompanyProfile } from "@/types/db";
 import { buildCompanyProfileUpsert, hydrateCompanyProfile } from "@/lib/companyProfile";
 
@@ -166,61 +167,287 @@ export async function POST(req: NextRequest) {
   }
 
   const planned = await planQueries(resolvedProfile);
-  const searchQueries = planned.queries.length > 0 ? planned.queries : resolvedProfile.targeted_keywords.slice(0, 5);
-  if (searchQueries.length === 0) {
+  const keywordQueries = uniqueStrings(resolvedProfile.targeted_keywords || []).slice(0, 12);
+
+  if (keywordQueries.length === 0) {
     return NextResponse.json({ error: "No keywords available to search." }, { status: 400 });
   }
 
-  const serpResponses = await Promise.allSettled(searchQueries.map((query) => fetchSerpNews(query, 3)));
-  const allNews = serpResponses.flatMap((result, idx) => {
-    if (result.status !== "fulfilled") {
-      console.warn("[company/generate-trends] serp query failed", searchQueries[idx], result.reason);
-      return [];
-    }
-    return result.value.map((item) => ({ ...item, query: searchQueries[idx] }));
-  });
+  const {
+    items: harvestedItems,
+    usedKeywords,
+    failedKeywords,
+    keywordErrors
+  } = await collectKeywordTrends(keywordQueries, resolvedProfile);
 
-  const seen = new Set<string>();
-  const curated = allNews.filter((item) => {
-    const key = item.title.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  let curated = dedupeAndRank(harvestedItems, 12);
+  let usedFallback = false;
 
   if (curated.length === 0) {
-    return NextResponse.json({ error: "No trends discovered from SERP." }, { status: 502 });
+    const fallbackItems = await collectGoogleTrendFallback(keywordQueries, resolvedProfile);
+    curated = dedupeAndRank(fallbackItems, 12);
+    usedFallback = curated.length > 0;
   }
 
-  await supabase.from("trend_topics").delete().contains("raw_data", { user_id: userId });
+  if (curated.length === 0) {
+    return NextResponse.json(
+      {
+        error: "No trends discovered from SERP or Google Trends fallback.",
+        keywords: keywordQueries,
+        usedKeywords,
+        failedKeywords,
+        diagnostics: keywordErrors
+      },
+      { status: 502 }
+    );
+  }
 
-  const rows = curated.slice(0, 12).map((item) => ({
+  let userColumnAvailable = true;
+  const { error: clearError } = await supabase.from("trend_topics").delete().eq("user_id", userId);
+  if (clearError) {
+    if (isMissingUserColumn(clearError)) {
+      userColumnAvailable = false;
+      const { error: legacyClearError } = await supabase
+        .from("trend_topics")
+        .delete()
+        .contains("raw_data", { user_id: userId });
+      if (legacyClearError) {
+        return NextResponse.json({ error: legacyClearError.message }, { status: 500 });
+      }
+    } else {
+      return NextResponse.json({ error: clearError.message }, { status: 500 });
+    }
+  }
+
+  const baseRows = curated.slice(0, 12).map((item) => ({
     name: item.title,
-    platform: "serp_news",
+    platform: item.platformHint || "serp_news",
     category: item.query,
     description: item.snippet,
     source: item.source || "SERP",
-    score: null,
+    score: item.relevance,
     velocity: null,
     raw_data: {
       link: item.link,
       date: item.date,
       thumbnail: item.thumbnail,
-      query: item.query,
+      keyword: item.query,
       planner_context: planned.context,
-      user_id: userId
+      user_id: userId,
+      relevance: item.relevance
     },
     company_context: resolvedProfile.company_name
   }));
 
-  const { data: inserted, error: insertError } = await supabase
-    .from("trend_topics")
-    .insert(rows)
-    .select("id");
+  let rows = userColumnAvailable ? baseRows.map((row) => ({ ...row, user_id: userId })) : baseRows;
+
+  let { data: inserted, error: insertError } = await supabase.from("trend_topics").insert(rows).select("id");
+
+  if (insertError && userColumnAvailable && isMissingUserColumn(insertError)) {
+    userColumnAvailable = false;
+    rows = baseRows;
+    ({ data: inserted, error: insertError } = await supabase.from("trend_topics").insert(rows).select("id"));
+  }
+
+  if (insertError && isMissingCompanyContextColumn(insertError)) {
+    rows = rows.map((row) => {
+      const clone: Record<string, any> = { ...row };
+      delete clone.company_context;
+      return clone;
+    });
+    ({ data: inserted, error: insertError } = await supabase.from("trend_topics").insert(rows).select("id"));
+  }
 
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ inserted: inserted?.length || 0, queries: searchQueries });
+  return NextResponse.json({
+    inserted: inserted?.length || 0,
+    keywords: keywordQueries,
+    usedKeywords,
+    failedKeywords,
+    usedFallback
+  });
 }
+
+type TrendCandidate = SerpNewsResult & {
+  query: string;
+  variant: string;
+  relevance: number;
+  platformHint?: string;
+};
+type KeywordError = {
+  keyword: string;
+  message: string;
+};
+async function collectKeywordTrends(
+  keywords: string[],
+  profile: CompanyProfile & { targeted_keywords: string[]; target_markets: string[] }
+) {
+  const items: TrendCandidate[] = [];
+  const usedKeywords: string[] = [];
+  const failedKeywords: string[] = [];
+  const keywordErrors: KeywordError[] = [];
+
+  for (const keyword of keywords) {
+    try {
+      const news = await fetchSerpNews(keyword, 5);
+      if (news.length > 0) {
+        usedKeywords.push(keyword);
+        items.push(
+          ...news.map((result) => ({
+            ...result,
+            query: keyword,
+            variant: keyword,
+            relevance: scoreSerpTrend(result, profile, keyword),
+            platformHint: "serp_news"
+          }))
+        );
+      } else {
+        failedKeywords.push(keyword);
+        keywordErrors.push({ keyword, message: "SERP returned no articles." });
+      }
+    } catch (err) {
+      failedKeywords.push(keyword);
+      keywordErrors.push({ keyword, message: (err as Error)?.message || "Unknown SERP error" });
+      console.warn("[company/generate-trends] serp fetch failed", { keyword, err });
+    }
+  }
+
+  return { items, usedKeywords, failedKeywords, keywordErrors };
+}
+
+async function collectGoogleTrendFallback(
+  keywords: string[],
+  profile: CompanyProfile & { targeted_keywords: string[]; target_markets: string[] }
+): Promise<TrendCandidate[]> {
+  try {
+    const topics = await fetchGoogleTrendsForKeywords(keywords);
+    return topics
+      .filter((topic) => Boolean(topic.name))
+      .map((topic) => {
+        const title = topic.name ?? "Google trend";
+        const description = topic.description ?? `Rising search interest for ${title}`;
+        const matchedKeyword = matchKeyword(title, keywords);
+        const pseudoResult: SerpNewsResult = {
+          title,
+          snippet: description,
+          link: deriveLink(topic.raw_data),
+          source: topic.source || "google_trends",
+          date: new Date().toISOString()
+        };
+        return {
+          ...pseudoResult,
+          query: matchedKeyword ?? title,
+          variant: "google_trends",
+          platformHint: topic.platform || topic.source || "google_trends",
+          relevance: scoreSerpTrend(pseudoResult, profile, matchedKeyword ?? title)
+        } satisfies TrendCandidate;
+      });
+  } catch (err) {
+    console.warn("[company/generate-trends] google trends fallback failed", err);
+    return [];
+  }
+}
+
+function matchKeyword(title: string, keywords: string[]) {
+  const lowerTitle = title.toLowerCase();
+  return keywords.find((keyword) => lowerTitle.includes(keyword.toLowerCase())) ?? null;
+}
+
+function deriveLink(raw: unknown) {
+  if (!raw || typeof raw !== "object") return "";
+  const maybe = raw as Record<string, any>;
+  return (
+    maybe?.articles?.[0]?.url ||
+    maybe?.newsArticles?.[0]?.url ||
+    maybe?.shareUrl ||
+    ""
+  );
+}
+
+function dedupeAndRank(items: TrendCandidate[], maxItems: number) {
+  const seen = new Set<string>();
+  return items
+    .sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0))
+    .filter((item) => {
+      const key = item.title.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, maxItems);
+}
+
+function scoreSerpTrend(
+  item: SerpNewsResult,
+  profile: CompanyProfile & { targeted_keywords: string[]; target_markets: string[] },
+  query: string
+) {
+  let score = 50;
+  const haystack = `${item.title} ${item.snippet}`.toLowerCase();
+  const keywords = profile.targeted_keywords || [];
+  const markets = profile.target_markets || [];
+  keywords.forEach((keyword) => {
+    if (keyword && haystack.includes(keyword.toLowerCase())) score += 8;
+  });
+  markets.forEach((market) => {
+    if (market && haystack.includes(market.toLowerCase())) score += 5;
+  });
+  if (query.toLowerCase().includes("trend")) score += 2;
+  score += freshnessScore(item.date);
+  return Math.min(100, Math.round(score));
+}
+
+function freshnessScore(dateInput?: string) {
+  if (!dateInput) return 0;
+  const normalized = dateInput.toLowerCase();
+  const relativeMatch = normalized.match(/(\d+)\s+(minute|hour|day|week)/);
+  if (relativeMatch) {
+    const value = Number(relativeMatch[1]);
+    const unit = relativeMatch[2];
+    if (unit.startsWith("minute")) return 20;
+    if (unit.startsWith("hour")) return value <= 6 ? 20 : 15;
+    if (unit.startsWith("day")) return value <= 2 ? 15 : 8;
+    if (unit.startsWith("week")) return value <= 1 ? 10 : 5;
+  }
+  const parsed = Date.parse(dateInput);
+  if (!Number.isNaN(parsed)) {
+    const hours = (Date.now() - parsed) / (1000 * 60 * 60);
+    if (hours <= 12) return 18;
+    if (hours <= 24) return 15;
+    if (hours <= 72) return 10;
+    if (hours <= 168) return 6;
+  }
+  return 0;
+}
+
+function uniqueStrings(values: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function isMissingUserColumn(error: { message?: string } | null) {
+  return isMissingColumn(error, "user_id");
+}
+
+function isMissingCompanyContextColumn(error: { message?: string } | null) {
+  return isMissingColumn(error, "company_context");
+}
+
+function isMissingColumn(error: { message?: string } | null, column: string) {
+  if (!error?.message) return false;
+  const normalized = error.message.toLowerCase();
+  return normalized.includes(column.toLowerCase()) && normalized.includes("column");
+}
+

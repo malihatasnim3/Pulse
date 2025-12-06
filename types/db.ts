@@ -27,6 +27,7 @@ export type AdGeneration = {
 
 export type TrendTopic = {
   id: number;
+  user_id?: string | null;
   name: string;
   platform: string | null;
   category: string | null;

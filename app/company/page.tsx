@@ -95,11 +95,29 @@ export default function CompanyPage() {
     const { data, error } = await supabase
       .from("trend_topics")
       .select("*")
-      .contains("raw_data", { user_id: userId })
+      .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(12);
+
     if (error) {
-      setTrendStatus(error.message);
+      if (isMissingUserColumn(error)) {
+        const { data: legacyData, error: legacyError } = await supabase
+          .from("trend_topics")
+          .select("*")
+          .contains("raw_data", { user_id: userId })
+          .order("created_at", { ascending: false })
+          .limit(12);
+        if (legacyError) {
+          setTrendStatus(legacyError.message);
+        } else {
+          setTrends(legacyData ?? []);
+          if (!legacyData || legacyData.length === 0) {
+            setTrendStatus("No personalized trends yet.");
+          }
+        }
+      } else {
+        setTrendStatus(error.message);
+      }
     } else {
       setTrends(data ?? []);
       if (!data || data.length === 0) {
@@ -191,7 +209,13 @@ export default function CompanyPage() {
         throw new Error(data?.error || "Trend generation failed.");
       }
       await fetchTrends();
-      setTrendStatus(`Generated ${data?.inserted ?? 0} new trends from ${data?.queries?.length ?? 0} searches.`);
+      const usedKeywords = Array.isArray(data?.usedKeywords) ? data.usedKeywords.length : 0;
+      const failedKeywords = Array.isArray(data?.failedKeywords) ? data.failedKeywords.length : 0;
+      const totalKeywords = Array.isArray(data?.keywords) ? data.keywords.length : usedKeywords + failedKeywords;
+      const fallbackNote = data?.usedFallback ? " (Google Trends fallback)" : "";
+      setTrendStatus(
+        `Generated ${data?.inserted ?? 0} new trends across ${totalKeywords} target keywords (${usedKeywords} hits, ${failedKeywords} misses)${fallbackNote}.`
+      );
     } catch (err: any) {
       setTrendStatus(err.message || "Trend generation failed.");
     } finally {
@@ -584,4 +608,10 @@ function GuidelinesUploader({
       )}
     </div>
   );
+}
+
+function isMissingUserColumn(error: { message?: string } | null) {
+  if (!error?.message) return false;
+  const normalized = error.message.toLowerCase();
+  return normalized.includes("user_id") && normalized.includes("column");
 }

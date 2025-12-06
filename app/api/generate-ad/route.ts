@@ -123,11 +123,25 @@ export async function POST(req: NextRequest) {
   const { data: personalTrends, error: personalError } = await supabase
     .from("trend_topics")
     .select("*")
-    .contains("raw_data", { user_id: userId })
+    .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(12);
   if (personalError) {
-    console.warn("[generate-ad] personal trends query failed", personalError);
+    if (isMissingUserColumn(personalError)) {
+      const { data: legacyTrends, error: legacyError } = await supabase
+        .from("trend_topics")
+        .select("*")
+        .contains("raw_data", { user_id: userId })
+        .order("created_at", { ascending: false })
+        .limit(12);
+      if (legacyError) {
+        console.warn("[generate-ad] legacy trends query failed", legacyError);
+      } else if (legacyTrends && legacyTrends.length > 0) {
+        trendRows = legacyTrends as TrendTopic[];
+      }
+    } else {
+      console.warn("[generate-ad] personal trends query failed", personalError);
+    }
   } else if (personalTrends && personalTrends.length > 0) {
     trendRows = personalTrends;
   }
@@ -250,4 +264,10 @@ function buildProductContext(product: ProductProfile, company: CompanyProfile): 
     price: product.price,
     imageUrls: product.image_urls ?? []
   };
+}
+
+function isMissingUserColumn(error: { message?: string } | null) {
+  if (!error?.message) return false;
+  const normalized = error.message.toLowerCase();
+  return normalized.includes("user_id") && normalized.includes("column");
 }
