@@ -11,6 +11,8 @@ const defaultProfile: CompanyProfileForm = {
   product: "",
   audience: "",
   goal: "",
+  company_description: "",
+  targeted_keywords: [],
   platform_preference: "tiktok"
 };
 
@@ -20,6 +22,8 @@ type CompanyProfileForm = {
   product: string;
   audience: string;
   goal: string;
+  company_description: string;
+  targeted_keywords: string[];
   platform_preference: string;
 };
 
@@ -56,6 +60,8 @@ export default function CompanyPage() {
           product: data.product ?? "",
           audience: data.audience ?? "",
           goal: data.goal ?? "",
+          company_description: data.company_description ?? "",
+          targeted_keywords: data.targeted_keywords ?? [],
           platform_preference: data.platform_preference ?? "tiktok"
         });
       }
@@ -85,6 +91,8 @@ export default function CompanyPage() {
       product: profile.product,
       audience: profile.audience,
       goal: profile.goal,
+      company_description: profile.company_description,
+      targeted_keywords: profile.targeted_keywords,
       platform_preference: profile.platform_preference
     });
     if (error) {
@@ -137,6 +145,17 @@ export default function CompanyPage() {
             onChange={(v) => setProfile((p) => ({ ...p, audience: v }))}
           />
           <Field label="Goal" value={profile.goal} onChange={(v) => setProfile((p) => ({ ...p, goal: v }))} />
+          <TextareaField
+            label="Company description"
+            value={profile.company_description}
+            onChange={(v) => setProfile((p) => ({ ...p, company_description: v }))}
+          />
+          <TagInput
+            label="Targeted keywords"
+            values={profile.targeted_keywords}
+            onChange={(keywords) => setProfile((p) => ({ ...p, targeted_keywords: keywords }))}
+            placeholder="Press Enter to add each keyword"
+          />
           <Field
             label="Brand colors (comma separated hex)"
             value={profile.brand_colors}
@@ -188,6 +207,98 @@ function Field({
   );
 }
 
+function TextareaField({
+  label,
+  value,
+  onChange
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block space-y-2 text-sm font-medium text-ink">
+      {label}
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-ink shadow-inner focus:border-punch focus:outline-none min-h-[120px]"
+      />
+    </label>
+  );
+}
+
+function TagInput({
+  label,
+  values,
+  onChange,
+  placeholder
+}: {
+  label: string;
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder?: string;
+}) {
+  const [inputValue, setInputValue] = useState("");
+
+  const addKeyword = () => {
+    const clean = inputValue.trim();
+    if (!clean) return;
+    if (values.some((keyword) => keyword.toLowerCase() === clean.toLowerCase())) {
+      setInputValue("");
+      return;
+    }
+    onChange([...values, clean]);
+    setInputValue("");
+  };
+
+  const removeKeyword = (index: number) => {
+    onChange(values.filter((_, idx) => idx !== index));
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      addKeyword();
+    }
+  };
+
+  return (
+    <div className="space-y-2 text-sm font-medium text-ink">
+      <span className="block">{label}</span>
+      <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-inner space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {values.length === 0 && (
+            <span className="text-xs font-normal text-black/40">No keywords added yet.</span>
+          )}
+          {values.map((keyword, index) => (
+            <span
+              key={`${keyword}-${index}`}
+              className="inline-flex items-center gap-1 rounded-full bg-punch/10 px-3 py-1 text-xs font-semibold text-punch border border-punch/20"
+            >
+              {keyword}
+              <button
+                type="button"
+                onClick={() => removeKeyword(index)}
+                className="text-base leading-none text-punch/70 hover:text-punch"
+                aria-label={`Remove ${keyword}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+        <input
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-sm font-normal text-ink focus:border-punch focus:outline-none"
+        />
+      </div>
+    </div>
+  );
+}
 function Select({
   label,
   value,

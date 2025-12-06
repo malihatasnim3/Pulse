@@ -55,6 +55,8 @@ export type CompanyProfile = {
   product: string | null;
   audience: string | null;
   goal: string | null;
+  company_description: string | null;
+  targeted_keywords: string[] | null;
   platform_preference: string | null;
   created_at?: string;
 };
