@@ -3,12 +3,13 @@
 import { m } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sparkles, LineChart, History, Wand2, Flame } from "lucide-react";
+import { Sparkles, LineChart, History, Wand2, Flame, Package } from "lucide-react";
 
 const links = [
   { href: "/trends", label: "Trends", icon: Flame },
   { href: "/ad-builder", label: "Ad Builder", icon: Wand2 },
   { href: "/company", label: "Company", icon: LineChart },
+  { href: "/products", label: "Products", icon: Package },
   { href: "/analytics", label: "Analytics", icon: LineChart },
   { href: "/ad-history", label: "Ad History", icon: History }
 ];
