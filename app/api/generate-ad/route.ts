@@ -2,25 +2,23 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import {
   generateAdSuiteWithNanoBananaPro,
+  type CompanyContext as LLMCompanyContext,
   type GenerateAdSuiteInput,
   type PatternSummary,
+  type ProductContext as LLMProductContext,
   type TrendSummary
 } from "@/lib/llm";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase";
-import type { CreativePattern, TrendTopic } from "@/types/db";
+import type { CompanyProfile, CreativePattern, ProductProfile, TrendTopic } from "@/types/db";
 
 const schema = z.object({
-  companyName: z.string().min(1),
-  name: z.string().min(1),
-  product: z.string().min(1),
-  audience: z.string().min(1),
+  campaignName: z.string().min(1),
   goal: z.string().min(1),
   platform: z.enum(["tiktok", "meta", "youtube"]),
   tone: z.string().min(1),
   format: z.literal("static_image"),
-  brandColors: z.array(z.string()).default([]),
-  productImageUrls: z.array(z.string()).default([]),
-  userId: z.string().uuid().optional().nullable()
+  productId: z.string().uuid(),
+  userId: z.string().uuid()
 });
 
 export async function POST(req: NextRequest) {
@@ -32,15 +30,44 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { userId: maybeUserId, ...payload } = parsed.data;
-  const userId = maybeUserId || null;
+  const { userId, productId, ...payload } = parsed.data;
 
-  // 1) Upsert project
+  // 1) Fetch company + product context
+  const { data: companyProfile, error: companyError } = await supabase
+    .from("company_profiles")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle<CompanyProfile>();
+
+  if (companyError) {
+    return NextResponse.json({ error: companyError.message }, { status: 500 });
+  }
+  if (!companyProfile) {
+    return NextResponse.json({ error: "Company profile not found. Save it first." }, { status: 400 });
+  }
+
+  const { data: productProfile, error: productError } = await supabase
+    .from("product_profiles")
+    .select("*")
+    .eq("id", productId)
+    .maybeSingle<ProductProfile>();
+
+  if (productError) {
+    return NextResponse.json({ error: productError.message }, { status: 500 });
+  }
+  if (!productProfile || productProfile.user_id !== userId) {
+    return NextResponse.json({ error: "Product not found for this user." }, { status: 404 });
+  }
+
+  const companyContext = buildCompanyContext(companyProfile);
+  const productContext = buildProductContext(productProfile, companyProfile);
+
+  // 2) Upsert project
   const { data: existingProject, error: findError } = await supabase
     .from("ad_projects")
     .select("*")
-    .eq("name", payload.name)
-    .eq("company_name", payload.companyName)
+    .eq("user_id", userId)
+    .eq("name", payload.campaignName)
     .maybeSingle();
 
   if (findError) {
@@ -52,12 +79,12 @@ export async function POST(req: NextRequest) {
     const { data: updated, error: updateError } = await supabase
       .from("ad_projects")
       .update({
-        product: payload.product,
-        audience: payload.audience,
+        product: productContext.name,
+        audience: productContext.audience,
         goal: payload.goal,
         platform_preference: payload.platform,
-        brand_colors: payload.brandColors,
-        product_image_urls: payload.productImageUrls
+        brand_colors: companyContext.brandColors,
+        product_image_urls: productContext.imageUrls
       })
       .eq("id", existingProject.id)
       .select("id")
@@ -70,14 +97,15 @@ export async function POST(req: NextRequest) {
     const { data: inserted, error: insertError } = await supabase
       .from("ad_projects")
       .insert({
-        company_name: payload.companyName,
-        name: payload.name,
-        product: payload.product,
-        audience: payload.audience,
+        user_id: userId,
+        company_name: companyContext.name,
+        name: payload.campaignName,
+        product: productContext.name,
+        audience: productContext.audience,
         goal: payload.goal,
         platform_preference: payload.platform,
-        brand_colors: payload.brandColors,
-        product_image_urls: payload.productImageUrls
+        brand_colors: companyContext.brandColors,
+        product_image_urls: productContext.imageUrls
       })
       .select("id")
       .maybeSingle();
@@ -87,21 +115,19 @@ export async function POST(req: NextRequest) {
     projectId = inserted.id;
   }
 
-  // 2) Fetch personalized trends + patterns
+  // 3) Fetch personalized trends + patterns
   let trendRows: TrendTopic[] | null = null;
 
-  if (userId) {
-    const { data: personalTrends, error: personalError } = await supabase
-      .from("trend_topics")
-      .select("*")
-      .contains("raw_data", { user_id: userId })
-      .order("created_at", { ascending: false })
-      .limit(12);
-    if (personalError) {
-      console.warn("[generate-ad] personal trends query failed", personalError);
-    } else if (personalTrends && personalTrends.length > 0) {
-      trendRows = personalTrends;
-    }
+  const { data: personalTrends, error: personalError } = await supabase
+    .from("trend_topics")
+    .select("*")
+    .contains("raw_data", { user_id: userId })
+    .order("created_at", { ascending: false })
+    .limit(12);
+  if (personalError) {
+    console.warn("[generate-ad] personal trends query failed", personalError);
+  } else if (personalTrends && personalTrends.length > 0) {
+    trendRows = personalTrends;
   }
 
   if (!trendRows) {
@@ -141,7 +167,13 @@ export async function POST(req: NextRequest) {
     })) || [];
 
   const llmInput: GenerateAdSuiteInput = {
-    ...payload,
+    campaignName: payload.campaignName,
+    goal: payload.goal,
+    platform: payload.platform,
+    tone: payload.tone,
+    format: payload.format,
+    company: companyContext,
+    product: productContext,
     trends,
     patterns
   };
@@ -158,7 +190,17 @@ export async function POST(req: NextRequest) {
         platform: payload.platform,
         tone: payload.tone,
         format: payload.format,
-        brief: { ...payload, trends, patterns },
+        brief: {
+          campaignName: payload.campaignName,
+          goal: payload.goal,
+          platform: payload.platform,
+          tone: payload.tone,
+          format: payload.format,
+          company: companyContext,
+          product: productContext,
+          trends,
+          patterns
+        },
         strategy: aiResult.strategy,
         ads: aiResult.variants
       })
@@ -179,4 +221,31 @@ export async function POST(req: NextRequest) {
     console.error("[generate-ad] failed", err);
     return NextResponse.json({ error: err?.message || "Generation failed" }, { status: 500 });
   }
+}
+
+function buildCompanyContext(profile: CompanyProfile): LLMCompanyContext {
+  return {
+    name: profile.company_name,
+    description: profile.company_description ?? "",
+    tagline: profile.tagline,
+    mission: profile.mission_statement,
+    brandVoice: profile.brand_voice,
+    brandColors: profile.brand_colors ?? [],
+    targetMarkets: profile.target_markets ?? [],
+    targetedKeywords: profile.targeted_keywords ?? [],
+    guidelineUrl: profile.brand_guidelines_url
+  };
+}
+
+function buildProductContext(product: ProductProfile, company: CompanyProfile): LLMProductContext {
+  return {
+    id: product.id,
+    name: product.name,
+    summary: product.summary ?? "",
+    audience: product.audience ?? company.target_markets?.join(", ") ?? "General audience",
+    positioning: product.positioning,
+    benefits: product.benefits ?? [],
+    price: product.price,
+    imageUrls: product.image_urls ?? []
+  };
 }
