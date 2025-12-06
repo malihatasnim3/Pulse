@@ -28,17 +28,37 @@ export type GeneratedAdVariant = {
   image_url: string;
 };
 
-export type GenerateAdSuiteInput = {
-  companyName: string;
+export type CompanyContext = {
   name: string;
-  product: string;
-  audience: string;
-  goal: string;
-  platform: string;
-  tone: string;
-  format: string;
+  description: string;
+  tagline?: string | null;
+  mission?: string | null;
+  brandVoice?: string | null;
   brandColors: string[];
-  productImageUrls: string[];
+  targetMarkets: string[];
+  targetedKeywords: string[];
+  guidelineUrl?: string | null;
+};
+
+export type ProductContext = {
+  id: string;
+  name: string;
+  summary: string;
+  audience: string;
+  positioning?: string | null;
+  benefits: string[];
+  price?: string | null;
+  imageUrls: string[];
+};
+
+export type GenerateAdSuiteInput = {
+  campaignName: string;
+  goal: string;
+  platform: "tiktok" | "meta" | "youtube";
+  tone: string;
+  format: "static_image";
+  company: CompanyContext;
+  product: ProductContext;
   trends: TrendSummary[];
   patterns: PatternSummary[];
 };
@@ -141,27 +161,53 @@ function buildUserPrompt(input: GenerateAdSuiteInput) {
       ? input.patterns.map((p) => `- ${p.name} (${p.platform ?? "any"}) :: ${p.description}`).join("\n")
       : "No creative patterns available.";
 
+  const companyBlock = [
+    `Company: ${input.company.name}`,
+    `Tagline: ${input.company.tagline || "-"}`,
+    `Mission: ${input.company.mission || "-"}`,
+    `Brand voice: ${input.company.brandVoice || "-"}`,
+    `Target markets: ${input.company.targetMarkets.join(", ") || "-"}`,
+    `Keywords: ${input.company.targetedKeywords.join(", ") || "-"}`,
+    `Description: ${input.company.description}`,
+    input.company.guidelineUrl ? `Guidelines reference: ${input.company.guidelineUrl}` : null
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const productBlock = [
+    `Product: ${input.product.name}`,
+    `Summary: ${input.product.summary}`,
+    `Audience: ${input.product.audience}`,
+    `Positioning: ${input.product.positioning || "-"}`,
+    `Benefits: ${input.product.benefits.join(", ") || "-"}`,
+    input.product.price ? `Price point: ${input.product.price}` : null,
+    `Image references: ${input.product.imageUrls.join(", ") || "none"}`
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   return [
-    `Company: ${input.companyName}`,
-    `Project name: ${input.name}`,
-    `Product: ${input.product}`,
-    `Audience: ${input.audience}`,
+    companyBlock,
+    productBlock,
+    `Campaign name: ${input.campaignName}`,
     `Goal: ${input.goal}`,
     `Platform: ${input.platform}`,
     `Tone: ${input.tone}`,
     `Format: ${input.format}`,
-    `Brand colors: ${input.brandColors.join(", ") || "none"}`,
-    `Product images: ${input.productImageUrls.join(", ") || "none"}`,
+    `Brand colors: ${input.company.brandColors.join(", ") || "none"}`,
     `Top trend topics:`,
     trendLines,
     `Creative patterns:`,
     patternLines,
     `Return JSON exactly as specified.`
-  ].join("\n");
+  ].join("\n\n");
 }
 
 function buildImagePrompt(variant: GeneratedAdVariant, input: GenerateAdSuiteInput) {
-  const colors = input.brandColors.length > 0 ? `Brand colors: ${input.brandColors.join(", ")}.` : "Use clean neutral palette.";
+  const colors =
+    input.company.brandColors.length > 0
+      ? `Brand colors: ${input.company.brandColors.join(", ")}.`
+      : "Use clean neutral palette.";
   const platformContext =
     input.platform === "tiktok"
       ? "TikTok static ad 9:16, vertical, safe text zones."
@@ -169,8 +215,8 @@ function buildImagePrompt(variant: GeneratedAdVariant, input: GenerateAdSuiteInp
         ? "YouTube feed static promotion 16:9 or 1:1, bold clarity."
         : "Meta feed static ad 1:1 or 4:5, conversion focused.";
   const productVisuals =
-    input.productImageUrls.length > 0
-      ? `Incorporate product references inspired by: ${input.productImageUrls.join(", ")}`
+    input.product.imageUrls.length > 0
+      ? `Incorporate product references inspired by: ${input.product.imageUrls.join(", ")}`
       : "Invent product visuals consistent with brief.";
 
   return `${variant.nano_visual_prompt} ${colors} ${platformContext} ${productVisuals} Do not place any UI chrome or watermarks.`;
@@ -231,7 +277,7 @@ export async function generateAdSuiteWithNanoBananaPro(input: GenerateAdSuiteInp
 
   const userPrompt = buildUserPrompt(input);
   console.log("[generateAdSuite] starting text strategy", {
-    project: input.name,
+    project: input.campaignName,
     platform: input.platform,
     tone: input.tone
   });
@@ -256,7 +302,7 @@ export async function generateAdSuiteWithNanoBananaPro(input: GenerateAdSuiteInp
     try {
       const imgPrompt = buildImagePrompt(variant, input);
       console.log("[generateAdSuite] sending Nano Banana prompt", {
-        project: input.name,
+        project: input.campaignName,
         variant: variant.variant_index,
         promptPreview: imgPrompt.slice(0, 280)
       });
@@ -272,7 +318,7 @@ export async function generateAdSuiteWithNanoBananaPro(input: GenerateAdSuiteInp
 
       if (!part?.data) {
         console.error("[generateAdSuite] image inlineData missing", {
-          project: input.name,
+          project: input.campaignName,
           variant: variant.variant_index,
           parts: imageResp.response.candidates?.[0]?.content?.parts
         });
@@ -280,7 +326,7 @@ export async function generateAdSuiteWithNanoBananaPro(input: GenerateAdSuiteInp
       }
 
       const buffer = Buffer.from(part.data, "base64");
-      const path = `nano-banana/${input.name}-${variant.variant_index}-${Date.now()}.png`
+      const path = `nano-banana/${input.campaignName}-${variant.variant_index}-${Date.now()}.png`
         .replace(/\s+/g, "-")
         .toLowerCase();
 
@@ -296,7 +342,7 @@ export async function generateAdSuiteWithNanoBananaPro(input: GenerateAdSuiteInp
       console.log("[generateAdSuite] image uploaded", { path, publicUrl: imageUrl });
     } catch (err) {
       console.error("Image generation/upload failed", {
-        project: input.name,
+        project: input.campaignName,
         variant: variant.variant_index,
         error: err
       });

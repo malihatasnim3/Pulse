@@ -34,7 +34,8 @@ export type TrendTopic = {
   source: string | null;
   score: number | null;
   velocity: number | null;
-  raw_data: unknown;
+  raw_data: Record<string, unknown> | null;
+  company_context?: string | null;
   created_at: string;
 };
 
@@ -51,10 +52,28 @@ export type CompanyProfile = {
   id?: string;
   user_id: string;
   company_name: string;
+  company_description: string | null;
+  tagline: string | null;
+  mission_statement: string | null;
+  brand_voice: string | null;
   brand_colors: string[] | null;
-  product: string | null;
-  audience: string | null;
-  goal: string | null;
+  targeted_keywords: string[] | null;
+  target_markets: string[] | null;
   platform_preference: string | null;
+  brand_guidelines_url: string | null;
   created_at?: string;
+};
+
+export type ProductProfile = {
+  id: string;
+  user_id: string;
+  name: string;
+  summary: string | null;
+  audience: string | null;
+  positioning: string | null;
+  benefits: string[] | null;
+  price: string | null;
+  image_urls: string[] | null;
+  status?: string | null;
+  created_at: string;
 };

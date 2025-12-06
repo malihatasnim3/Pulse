@@ -1,38 +1,29 @@
 "use client";
 
+import type { CompanyProfile, ProductProfile } from "@/types/db";
+import { Loader2, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { m } from "framer-motion";
-import { Sparkles, Loader2 } from "lucide-react";
-import { ProductImageUploader } from "@/components/ProductImageUploader";
+
 import { AdVariantCard } from "@/components/AdVariantCard";
 import { Confetti } from "@/components/Confetti";
 import type { GenerateAdSuiteResult } from "@/lib/llm";
+import Link from "next/link";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
+import { hydrateCompanyProfile } from "@/lib/companyProfile";
+import { m } from "framer-motion";
 
 type FormState = {
-  companyName: string;
-  name: string;
-  product: string;
-  audience: string;
   goal: string;
   platform: "tiktok" | "meta" | "youtube";
   tone: string;
   format: "static_image";
-  brandColors: string;
-  productImageUrls: string[];
 };
 
 const defaultForm: FormState = {
-  companyName: "Acme Labs",
-  name: "Summer Pulse",
-  product: "A portable cold brew maker with smart chill timer.",
-  audience: "Young professionals who love coffee and design-forward gadgets",
-  goal: "Drive preorders and email signups",
+  goal: "Drive sales",
   platform: "tiktok",
   tone: "friendly",
-  format: "static_image",
-  brandColors: "#FF4E68, #111827",
-  productImageUrls: []
+  format: "static_image"
 };
 
 export default function AdBuilderPage() {
@@ -43,14 +34,14 @@ export default function AdBuilderPage() {
   const [error, setError] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
   const [profileStatus, setProfileStatus] = useState<string | null>(null);
-
-  const brandColorArray = useMemo(
-    () =>
-      form.brandColors
-        .split(",")
-        .map((c) => c.trim())
-        .filter(Boolean),
-    [form.brandColors]
+  const [userId, setUserId] = useState<string | null>(null);
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
+  const [products, setProducts] = useState<ProductProfile[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [productStatus, setProductStatus] = useState<string | null>(null);
+  const selectedProduct = useMemo(
+    () => products.find((product) => product.id === selectedProductId) ?? null,
+    [products, selectedProductId]
   );
 
   useEffect(() => {
@@ -58,47 +49,74 @@ export default function AdBuilderPage() {
       const { data } = await supabase.auth.getSession();
       const session = data.session;
       if (!session?.user) return;
-      const { data: profile, error } = await supabase
-        .from("company_profiles")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
-      if (error || !profile) {
-        if (error && error.code !== "PGRST116") {
-          setProfileStatus("Could not load company profile.");
-        }
-        return;
+      setUserId(session.user.id);
+      const [{ data: profileRow, error: profileError }, { data: productRows, error: productError }] = await Promise.all([
+        supabase
+          .from("company_profiles")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .maybeSingle(),
+        supabase
+          .from("product_profiles")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .order("created_at", { ascending: false })
+      ]);
+
+      if (profileError) {
+        setProfileStatus(profileError.message);
       }
-      setForm((s) => ({
-        ...s,
-        companyName: profile.company_name || s.companyName,
-        product: profile.product || s.product,
-        audience: profile.audience || s.audience,
-        goal: profile.goal || s.goal,
-        platform: (profile.platform_preference as FormState["platform"]) || s.platform,
-        brandColors: (profile.brand_colors || []).join(", ") || s.brandColors
-      }));
-      setProfileStatus("Loaded saved company profile.");
+      const hydratedProfile = hydrateCompanyProfile(profileRow as any);
+      if (hydratedProfile) {
+        setProfileStatus("Company context loaded.");
+      }
+      setCompanyProfile(hydratedProfile);
+
+      if (productError) {
+        setProductStatus(productError.message);
+      }
+      setProducts(productRows ?? []);
+      if (productRows && productRows.length > 0) {
+        setSelectedProductId(productRows[0].id);
+      }
     };
     maybePrefillFromProfile();
   }, [supabase]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
     setResult(null);
     setCelebrate(false);
+
+    if (!companyProfile) {
+      setError("Add your company profile first so the AI knows your brand.");
+      return;
+    }
+
+    if (!selectedProduct) {
+      setError("Select a product to generate a campaign.");
+      return;
+    }
+
+    setLoading(true);
+
+    const campaignName = `${companyProfile.company_name} x ${selectedProduct.name}`.trim();
+    const payload = {
+      campaignName: campaignName || selectedProduct.name || companyProfile.company_name,
+      goal: form.goal,
+      platform: form.platform,
+      tone: form.tone,
+      format: form.format,
+      productId: selectedProduct.id,
+      userId
+    };
 
     try {
       const res = await fetch("/api/generate-ad", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          brandColors: brandColorArray,
-          productImageUrls: form.productImageUrls
-        })
+        body: JSON.stringify(payload)
       });
 
       const json = await res.json();
@@ -137,23 +155,40 @@ export default function AdBuilderPage() {
            <div className="absolute inset-0 translate-x-3 translate-y-3 rounded-[2.5rem] bg-mustard border-3 border-black" />
            
            <div className="relative space-y-6 rounded-[2.5rem] border-3 border-black bg-white p-8">
-            <Field
-              label="Company name"
-              value={form.companyName}
-              onChange={(v) => setForm((s) => ({ ...s, companyName: v }))}
-            />
-            <Field label="Project name" value={form.name} onChange={(v) => setForm((s) => ({ ...s, name: v }))} />
-            <TextArea
-              label="Product description"
-              value={form.product}
-              onChange={(v) => setForm((s) => ({ ...s, product: v }))}
-            />
-            <TextArea
-              label="Target audience"
-              value={form.audience}
-              onChange={(v) => setForm((s) => ({ ...s, audience: v }))}
-            />
-            <Field label="Goal" value={form.goal} onChange={(v) => setForm((s) => ({ ...s, goal: v }))} />
+            <div className="space-y-1">
+              <p className="text-xs font-black uppercase tracking-wide text-black/40">Setup</p>
+              <p className="text-3xl font-black text-ink leading-tight">Select a product, aim, and tone.</p>
+              <p className="text-base font-bold text-black/60">We pull the rest from your company + product profiles.</p>
+            </div>
+
+            {!companyProfile && (
+              <Callout
+                title="No company context yet"
+                description="Finish the company profile so Gemini knows your mission, brand voice, and color guardrails."
+                actionLabel="Open company profile"
+                actionHref="/company"
+              />
+            )}
+
+            {products.length === 0 && (
+              <Callout
+                title="Add a product"
+                description="Drop at least one product with positioning, benefits, and image refs before spinning up ads."
+                actionLabel="Manage products"
+                actionHref="/products"
+              />
+            )}
+
+            {products.length > 0 && (
+              <Select
+                label="Product"
+                value={selectedProductId ?? ""}
+                options={products.map((product) => ({ value: product.id, label: product.name }))}
+                onChange={(v) => setSelectedProductId(v)}
+              />
+            )}
+
+            <TextArea label="Goal" value={form.goal} onChange={(v) => setForm((s) => ({ ...s, goal: v }))} />
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Select
@@ -179,28 +214,17 @@ export default function AdBuilderPage() {
               />
             </div>
 
-            <Field
-              label="Brand colors (comma separated hex)"
-              value={form.brandColors}
-              onChange={(v) => setForm((s) => ({ ...s, brandColors: v }))}
-              placeholder="#FF4E68, #111827"
-            />
-
-            <ProductImageUploader
-              value={form.productImageUrls}
-              onChange={(urls) => setForm((s) => ({ ...s, productImageUrls: urls }))}
-            />
-
-            {profileStatus && <p className="text-sm font-bold text-black/60">{profileStatus}</p>}
+            {profileStatus && <InlineStatus message={profileStatus} />}
+            {productStatus && <InlineStatus message={productStatus} />}
 
             <m.button
               whileTap={{ scale: 0.98 }}
               type="submit"
-              disabled={loading}
+              disabled={loading || !companyProfile || !selectedProduct}
               className="btn-primary flex items-center justify-center gap-3 disabled:opacity-60"
             >
               {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Sparkles className="h-6 w-6" />}
-              {loading ? "Summoning..." : "Lock My Choice In"}
+              {loading ? "Summoning..." : !companyProfile || !selectedProduct ? "Context required" : "Generate ads"}
             </m.button>
 
             {error && <p className="text-lg font-bold text-punch">{error}</p>}
@@ -219,6 +243,130 @@ export default function AdBuilderPage() {
                 <li>Nano Banana Pro renders static ad images</li>
                 <li>Supabase stores project, copy, and outputs</li>
               </ul>
+            </div>
+          </div>
+
+          <div className="relative group">
+            <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-3xl bg-forest border-3 border-black transition-transform group-hover:translate-x-3 group-hover:translate-y-3" />
+            <div className="relative rounded-3xl border-3 border-black bg-white p-6">
+              <p className="text-sm font-black uppercase tracking-wide text-black/40">Company context</p>
+              {companyProfile ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-2xl font-black text-ink">{companyProfile.company_name}</p>
+                    <p className="text-base font-bold text-black/60">{companyProfile.tagline || companyProfile.mission_statement || "No tagline yet."}</p>
+                  </div>
+                  <p className="text-sm font-medium text-black/70">{companyProfile.company_description || "Add a short description in the company tab so the AI knows what you sell."}</p>
+                  <dl className="space-y-2 text-sm font-bold text-black/70">
+                    <div>
+                      <dt className="uppercase text-xs text-black/40">Brand voice</dt>
+                      <dd>{companyProfile.brand_voice || "-"}</dd>
+                    </div>
+                    <div>
+                      <dt className="uppercase text-xs text-black/40">Target markets</dt>
+                      <dd>{companyProfile.target_markets?.length ? companyProfile.target_markets.join(", ") : "Add markets"}</dd>
+                    </div>
+                    <div>
+                      <dt className="uppercase text-xs text-black/40">Keywords</dt>
+                      <dd>{companyProfile.targeted_keywords?.length ? companyProfile.targeted_keywords.join(", ") : "No keywords set"}</dd>
+                    </div>
+                  </dl>
+                  <div className="flex flex-wrap gap-2">
+                    {companyProfile.brand_colors?.length ? (
+                      companyProfile.brand_colors.map((hex) => <ColorSwatch key={hex} value={hex} />)
+                    ) : (
+                      <p className="text-xs font-bold uppercase tracking-wide text-black/40">Add brand colors for stronger art direction.</p>
+                    )}
+                  </div>
+                  {companyProfile.brand_guidelines_url && (
+                    <Link
+                      href={companyProfile.brand_guidelines_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 text-sm font-black text-ink underline"
+                    >
+                      View brand guidelines
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-lg font-black text-ink">No profile yet</p>
+                  <p className="text-sm font-bold text-black/60">Your ads borrow tone, mission, and guardrails from the company profile.</p>
+                  <Link
+                    href="/company"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border-2 border-black bg-white px-4 py-2 text-sm font-black text-ink transition hover:-translate-y-0.5"
+                  >
+                    Build company profile
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="relative group">
+            <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-3xl bg-punch border-3 border-black transition-transform group-hover:translate-x-3 group-hover:translate-y-3" />
+            <div className="relative rounded-3xl border-3 border-black bg-white p-6">
+              <p className="text-sm font-black uppercase tracking-wide text-black/40">Product context</p>
+              {selectedProduct ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-2xl font-black text-ink">{selectedProduct.name}</p>
+                    <p className="text-sm font-bold text-black/60">{selectedProduct.positioning || selectedProduct.audience || "No positioning yet."}</p>
+                  </div>
+                  <p className="text-sm font-medium text-black/70">{selectedProduct.summary || "Add a summary inside the Products tab."}</p>
+                  <dl className="space-y-2 text-sm font-bold text-black/70">
+                    <div>
+                      <dt className="uppercase text-xs text-black/40">Audience</dt>
+                      <dd>{selectedProduct.audience || "-"}</dd>
+                    </div>
+                    <div>
+                      <dt className="uppercase text-xs text-black/40">Benefits</dt>
+                      <dd>
+                        {selectedProduct.benefits?.length ? (
+                          <div className="flex flex-wrap gap-2">
+                            {selectedProduct.benefits.map((benefit) => (
+                              <span key={benefit} className="rounded-full border-2 border-black bg-cream px-3 py-1 text-xs font-black">
+                                {benefit}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          "Add benefit bullets"
+                        )}
+                      </dd>
+                    </div>
+                    {selectedProduct.price && (
+                      <div>
+                        <dt className="uppercase text-xs text-black/40">Price</dt>
+                        <dd>{selectedProduct.price}</dd>
+                      </div>
+                    )}
+                  </dl>
+                  {selectedProduct.image_urls?.length ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {selectedProduct.image_urls.slice(0, 3).map((url) => (
+                        <div key={url} className="h-20 overflow-hidden rounded-2xl border-2 border-black bg-cream">
+                          <img src={url} alt={selectedProduct.name} className="h-full w-full object-cover" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-bold uppercase tracking-wide text-black/40">Add product imagery to help Nano Banana Pro.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-lg font-black text-ink">Select a product</p>
+                  <p className="text-sm font-bold text-black/60">Pick any saved product to inject positioning, benefits, and images.</p>
+                  <Link
+                    href="/products"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border-2 border-black bg-white px-4 py-2 text-sm font-black text-ink transition hover:-translate-y-0.5"
+                  >
+                    Manage products
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
 
@@ -269,30 +417,6 @@ export default function AdBuilderPage() {
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder
-}: {
-  label: string;
-  value: string;
-  placeholder?: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <label className="block space-y-2 text-base font-bold text-ink">
-      {label}
-      <input
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className="input-field"
-      />
-    </label>
-  );
-}
-
 function TextArea({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="block space-y-2 text-base font-bold text-ink">
@@ -304,6 +428,46 @@ function TextArea({ label, value, onChange }: { label: string; value: string; on
         rows={3}
       />
     </label>
+  );
+}
+
+function InlineStatus({ message }: { message: string }) {
+  return <p className="text-sm font-bold text-black/60">{message}</p>;
+}
+
+function Callout({
+  title,
+  description,
+  actionLabel,
+  actionHref
+}: {
+  title: string;
+  description: string;
+  actionLabel?: string;
+  actionHref?: string;
+}) {
+  return (
+    <div className="rounded-3xl border-3 border-black bg-cream p-5">
+      <p className="text-lg font-black text-ink">{title}</p>
+      <p className="mt-1 text-sm font-bold text-black/60">{description}</p>
+      {actionLabel && actionHref && (
+        <Link
+          href={actionHref}
+          className="mt-3 inline-flex items-center justify-center gap-2 rounded-full border-2 border-black bg-white px-4 py-2 text-sm font-black text-ink transition hover:-translate-y-0.5"
+        >
+          {actionLabel}
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function ColorSwatch({ value }: { value: string }) {
+  return (
+    <span className="flex items-center gap-2 rounded-full border-2 border-black bg-cream px-3 py-1 text-xs font-black uppercase tracking-wide">
+      <span className="h-4 w-4 rounded-full border border-black" style={{ backgroundColor: value }} />
+      {value}
+    </span>
   );
 }
 
