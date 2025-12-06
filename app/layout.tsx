@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={`${grotesk.variable} pattern-bg text-ink`}>
         <NavBar />
-        <main className="mx-auto max-w-6xl px-6 py-10">
+        <main className="mx-auto max-w-6xl px-6 py-10 pb-32">
           <Providers>{children}</Providers>
         </main>
       </body>
