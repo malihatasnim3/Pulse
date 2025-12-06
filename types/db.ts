@@ -34,7 +34,8 @@ export type TrendTopic = {
   source: string | null;
   score: number | null;
   velocity: number | null;
-  raw_data: unknown;
+  raw_data: Record<string, unknown> | null;
+  company_context?: string | null;
   created_at: string;
 };
 

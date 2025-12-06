@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Loader2, Save, AlertCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Loader2, Save, AlertCircle, RefreshCcw, Sparkles } from "lucide-react";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
-import type { CompanyProfile } from "@/types/db";
+import type { CompanyProfile, TrendTopic } from "@/types/db";
 
 const defaultProfile: CompanyProfileForm = {
   company_name: "",
@@ -34,6 +34,11 @@ export default function CompanyPage() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [trends, setTrends] = useState<TrendTopic[]>([]);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+  const [generatingTrends, setGeneratingTrends] = useState(false);
+  const [trendStatus, setTrendStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -46,6 +51,7 @@ export default function CompanyPage() {
         return;
       }
       setUserEmail(session.user.email || null);
+      setUserId(session.user.id);
       const { data, error } = await supabase
         .from("company_profiles")
         .select("*")
@@ -69,6 +75,32 @@ export default function CompanyPage() {
     };
     load();
   }, [supabase]);
+
+  const fetchTrends = useCallback(async () => {
+    if (!userId) return;
+    setTrendsLoading(true);
+    setTrendStatus(null);
+    const { data, error } = await supabase
+      .from("trend_topics")
+      .select("*")
+      .contains("raw_data", { user_id: userId })
+      .order("created_at", { ascending: false })
+      .limit(12);
+    if (error) {
+      setTrendStatus(error.message);
+    } else {
+      setTrends(data ?? []);
+      if (!data || data.length === 0) {
+        setTrendStatus("No personalized trends yet.");
+      }
+    }
+    setTrendsLoading(false);
+  }, [supabase, userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    fetchTrends();
+  }, [userId, fetchTrends]);
 
   const saveProfile = async () => {
     setSaving(true);
@@ -101,6 +133,39 @@ export default function CompanyPage() {
       setStatus("Saved. The Ad Builder will auto-fill from this profile.");
     }
     setSaving(false);
+  };
+
+  const missingFields = useMemo(() => computeMissingFields(profile), [profile]);
+  const profileComplete = missingFields.length === 0;
+
+  const handleGenerateTrends = async () => {
+    if (!userId) {
+      setTrendStatus("Please sign in to generate trends.");
+      return;
+    }
+    if (!profileComplete) {
+      setTrendStatus("Complete your profile to unlock personalized trends.");
+      return;
+    }
+    setGeneratingTrends(true);
+    setTrendStatus("Personalizing cultural moments...");
+    try {
+      const response = await fetch("/api/company/generate-trends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Trend generation failed.");
+      }
+      await fetchTrends();
+      setTrendStatus(`Generated ${data?.inserted ?? 0} new trends from ${data?.queries?.length ?? 0} searches.`);
+    } catch (err: any) {
+      setTrendStatus(err.message || "Trend generation failed.");
+    } finally {
+      setGeneratingTrends(false);
+    }
   };
 
   return (
@@ -180,6 +245,79 @@ export default function CompanyPage() {
             Save profile
           </button>
           {userEmail && <p className="text-xs text-black/60">Signed in as {userEmail}</p>}
+
+          <section className="mt-8 space-y-4 rounded-2xl border border-black/10 bg-gradient-to-br from-white to-slate-50 p-5 shadow-inner">
+            <div className="flex flex-col gap-1">
+              <p className="text-xs uppercase tracking-tight text-black/50">Personalized research</p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-ink">Live cultural trends</h2>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleGenerateTrends}
+                    disabled={!profileComplete || generatingTrends}
+                    className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {generatingTrends ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    Generate trends
+                  </button>
+                  <button
+                    type="button"
+                    onClick={fetchTrends}
+                    disabled={trendsLoading || generatingTrends}
+                    className="inline-flex items-center gap-2 rounded-full border border-black/10 px-4 py-2 text-sm font-semibold text-black/70 shadow-sm transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {trendsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                    Refresh
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {!profileComplete && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-900">
+                <p className="font-semibold">Complete your profile to unlock personalized research.</p>
+                <p className="mt-1 text-xs">Missing: {missingFields.join(", ")}</p>
+              </div>
+            )}
+
+            {trendStatus && (
+              <div className="flex items-center gap-2 rounded-xl bg-black/5 px-3 py-2 text-xs text-black/70">
+                <AlertCircle className="h-3.5 w-3.5 text-punch" />
+                <span>{trendStatus}</span>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {trendsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-black/50">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Fetching your latest trend signals...
+                </div>
+              ) : trends.length > 0 ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {trends.map((trend) => (
+                    <article key={trend.id} className="rounded-2xl border border-black/10 bg-white/80 p-4 shadow-card">
+                      <p className="text-xs uppercase tracking-tight text-black/40">{trend.category || trend.platform}</p>
+                      <h3 className="mt-1 text-sm font-semibold text-ink">{trend.name}</h3>
+                      <p className="mt-2 text-xs text-black/60">
+                        {trend.description ?? "No description available."}
+                      </p>
+                      <div className="mt-3 text-[11px] text-black/40">
+                        <span>Source: {trend.source ?? trend.platform ?? "SERP"}</span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-black/50">No personalized trends yet. Generate to see live culture cues.</p>
+              )}
+            </div>
+          </section>
         </div>
       )}
     </div>
@@ -205,6 +343,17 @@ function Field({
       />
     </label>
   );
+}
+
+function computeMissingFields(profile: CompanyProfileForm) {
+  const missing: string[] = [];
+  if (!profile.company_name.trim()) missing.push("company name");
+  if (!profile.product.trim()) missing.push("product");
+  if (!profile.audience.trim()) missing.push("audience");
+  if (!profile.goal.trim()) missing.push("goal");
+  if (!profile.company_description.trim()) missing.push("description");
+  if (!profile.targeted_keywords || profile.targeted_keywords.length === 0) missing.push("keywords");
+  return missing;
 }
 
 function TextareaField({

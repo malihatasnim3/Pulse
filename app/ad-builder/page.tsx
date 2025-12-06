@@ -43,6 +43,7 @@ export default function AdBuilderPage() {
   const [error, setError] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
   const [profileStatus, setProfileStatus] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   const brandColorArray = useMemo(
     () =>
@@ -58,6 +59,7 @@ export default function AdBuilderPage() {
       const { data } = await supabase.auth.getSession();
       const session = data.session;
       if (!session?.user) return;
+      setUserId(session.user.id);
       const { data: profile, error } = await supabase
         .from("company_profiles")
         .select("*")
@@ -97,7 +99,8 @@ export default function AdBuilderPage() {
         body: JSON.stringify({
           ...form,
           brandColors: brandColorArray,
-          productImageUrls: form.productImageUrls
+          productImageUrls: form.productImageUrls,
+          userId
         })
       });
 
