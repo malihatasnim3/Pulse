@@ -3,12 +3,17 @@ import { fetchGoogleTrendsForKeywords } from "@/lib/trends/googleTrends";
 import { fetchYouTubeTrendingTopics } from "@/lib/trends/youtube";
 import { fetchRedditTopics } from "@/lib/trends/reddit";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase";
+import { fetchPytrendsTopics } from "@/lib/trends/pytrends";
 
 export async function POST() {
   const supabase = createServiceRoleSupabaseClient();
 
+  const usePytrends = process.env.USE_PYTRENDS === "1";
+
   const [googleTopics, youtubeTopics, redditTopics] = await Promise.all([
-    fetchGoogleTrendsForKeywords(["ai", "fitness", "beauty", "gaming", "finance"]),
+    usePytrends
+      ? fetchPytrendsTopics(["ai", "fitness", "beauty", "gaming", "finance"])
+      : fetchGoogleTrendsForKeywords(["ai", "fitness", "beauty", "gaming", "finance"]),
     fetchYouTubeTrendingTopics(),
     fetchRedditTopics(["marketing", "design", "technology"])
   ]);
