@@ -1,5 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase";
-import { TrendsClient } from "@/components/TrendsClient";
+import { TrendsClient } from "@/components/trends/TrendsClient";
 import type { CreativePattern, TrendTopic } from "@/types/db";
 
 export default async function TrendsPage() {

@@ -4,8 +4,8 @@ import { AlertCircle, Loader2, RefreshCcw, Save, Sparkles, Trash2, Upload } from
 import type { CompanyProfile, TrendTopic } from "@/types/db";
 import { buildCompanyProfileUpsert, hydrateCompanyProfile } from "@/lib/companyProfile";
 import { useCallback, useEffect, useMemo, useState } from "react";
-
 import { createBrowserSupabaseClient } from "@/lib/supabase";
+import { m } from "framer-motion";
 
 const defaultProfile: CompanyProfileForm = {
   company_name: "",
@@ -199,188 +199,249 @@ export default function CompanyPage() {
     }
   };
 
+  const brandColorArray = useMemo(
+    () =>
+      profile.brand_colors
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean),
+    [profile.brand_colors]
+  );
+
   return (
-    <div className="mx-auto max-w-3xl space-y-6 rounded-2xl bg-white/90 p-6 shadow-card ring-1 ring-black/5">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-tight text-black/50">Company</p>
-          <h1 className="text-2xl font-semibold text-ink">Company profile</h1>
-          <p className="text-sm text-black/60">Saved data will prefill the ad builder.</p>
-        </div>
+    <div className="mx-auto max-w-6xl space-y-10 pb-20">
+      {/* Header */}
+      <div className="text-center">
+        <h1 className="text-5xl font-black text-ink tracking-tight">Company Profile</h1>
+        <p className="mt-3 text-xl font-bold text-black/60">
+          Your brand identity powers the Ad Builder.
+        </p>
       </div>
 
       {loading && (
-        <div className="flex items-center gap-2 text-sm text-black/60">
-          <Loader2 className="h-4 w-4 animate-spin" />
+        <div className="flex items-center justify-center gap-2 text-lg font-bold text-black/60">
+          <Loader2 className="h-5 w-5 animate-spin" />
           Loading profile...
         </div>
       )}
 
       {!loading && status && (
-        <div className="flex items-center gap-2 rounded-lg bg-black/5 p-3 text-sm text-black/70">
-          <AlertCircle className="h-4 w-4 text-punch" />
-          <span>{status}</span>
-        </div>
+        <m.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative group"
+        >
+          <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-3xl bg-punch border-3 border-black" />
+          <div className="relative flex items-center gap-3 rounded-3xl border-3 border-black bg-white p-5">
+            <AlertCircle className="h-5 w-5 text-punch" />
+            <span className="font-bold text-ink">{status}</span>
+          </div>
+        </m.div>
       )}
 
       {!loading && (
-        <div className="space-y-4">
-          <Field
-            label="Company name"
-            value={profile.company_name}
-            onChange={(v) => setProfile((p) => ({ ...p, company_name: v }))}
-          />
-          <Field label="Tagline" value={profile.tagline} onChange={(v) => setProfile((p) => ({ ...p, tagline: v }))} />
-          <TextareaField
-            label="Mission statement"
-            value={profile.mission_statement}
-            onChange={(v) => setProfile((p) => ({ ...p, mission_statement: v }))}
-          />
-          <TextareaField
-            label="Company description"
-            value={profile.company_description}
-            onChange={(v) => setProfile((p) => ({ ...p, company_description: v }))}
-          />
-          <Field
-            label="Brand voice"
-            value={profile.brand_voice}
-            onChange={(v) => setProfile((p) => ({ ...p, brand_voice: v }))}
-          />
-          <TagInput
-            label="Target markets"
-            values={profile.target_markets}
-            onChange={(values) => setProfile((p) => ({ ...p, target_markets: values }))}
-            placeholder="Add each market focus"
-          />
-          <TagInput
-            label="Targeted keywords"
-            values={profile.targeted_keywords}
-            onChange={(keywords) => setProfile((p) => ({ ...p, targeted_keywords: keywords }))}
-            placeholder="Press Enter to add each keyword"
-          />
-          <Field
-            label="Brand colors (comma separated hex)"
-            value={profile.brand_colors}
-            onChange={(v) => setProfile((p) => ({ ...p, brand_colors: v }))}
-          />
-          <GuidelinesUploader
-            url={profile.brand_guidelines_url}
-            uploading={guidelineUploading}
-            onUpload={async (file) => {
-              if (!file || !userId) return;
-              setGuidelineUploading(true);
-              try {
-                const path = `guidelines/${userId}-${Date.now()}-${file.name}`.replace(/\s+/g, "-").toLowerCase();
-                const { error } = await supabase.storage.from("brand-guidelines").upload(path, file, {
-                  contentType: file.type,
-                  upsert: true
-                });
-                if (error) throw error;
-                const { data } = supabase.storage.from("brand-guidelines").getPublicUrl(path);
-                setProfile((prev) => ({ ...prev, brand_guidelines_url: data?.publicUrl ?? null }));
-                setStatus("Brand guidelines uploaded.");
-              } catch (err: any) {
-                setStatus(err.message || "Upload failed");
-              } finally {
-                setGuidelineUploading(false);
-              }
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-5">
+          {/* Form */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveProfile();
             }}
-            onRemove={async () => {
-              setProfile((prev) => ({ ...prev, brand_guidelines_url: null }));
-            }}
-          />
-          <Select
-            label="Preferred platform"
-            value={profile.platform_preference}
-            onChange={(v) => setProfile((p) => ({ ...p, platform_preference: v }))}
-            options={[
-              { value: "tiktok", label: "TikTok" },
-              { value: "meta", label: "Meta" },
-              { value: "youtube", label: "YouTube" }
-            ]}
-          />
-          <button
-            onClick={saveProfile}
-            disabled={saving}
-            className="flex items-center gap-2 rounded-full bg-punch px-4 py-3 text-sm font-semibold text-white shadow-pill hover:brightness-105 disabled:opacity-60"
+            className="relative lg:col-span-3"
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save profile
-          </button>
-          {userEmail && <p className="text-xs text-black/60">Signed in as {userEmail}</p>}
+            <div className="absolute inset-0 translate-x-3 translate-y-3 rounded-[2.5rem] bg-mustard border-3 border-black" />
 
-          <section className="mt-8 space-y-4 rounded-2xl border border-black/10 bg-gradient-to-br from-white to-slate-50 p-5 shadow-inner">
-            <div className="flex flex-col gap-1">
-              <p className="text-xs uppercase tracking-tight text-black/50">Personalized research</p>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-ink">Live cultural trends</h2>
+            <div className="relative space-y-6 rounded-[2.5rem] border-3 border-black bg-white p-8">
+              <Field
+                label="Company name"
+                value={profile.company_name}
+                onChange={(v) => setProfile((p) => ({ ...p, company_name: v }))}
+              />
+              <Field label="Tagline" value={profile.tagline} onChange={(v) => setProfile((p) => ({ ...p, tagline: v }))} />
+              <TextArea
+                label="Mission statement"
+                value={profile.mission_statement}
+                onChange={(v) => setProfile((p) => ({ ...p, mission_statement: v }))}
+              />
+              <TextArea
+                label="Company description"
+                value={profile.company_description}
+                onChange={(v) => setProfile((p) => ({ ...p, company_description: v }))}
+              />
+              <Field
+                label="Brand voice"
+                value={profile.brand_voice}
+                onChange={(v) => setProfile((p) => ({ ...p, brand_voice: v }))}
+              />
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Select
+                  label="Preferred platform"
+                  value={profile.platform_preference}
+                  onChange={(v) => setProfile((p) => ({ ...p, platform_preference: v }))}
+                  options={[
+                    { value: "tiktok", label: "TikTok" },
+                    { value: "meta", label: "Meta" },
+                    { value: "youtube", label: "YouTube" }
+                  ]}
+                />
+                <Field
+                  label="Brand colors (comma separated hex)"
+                  value={profile.brand_colors}
+                  onChange={(v) => setProfile((p) => ({ ...p, brand_colors: v }))}
+                  placeholder="#FF4E68, #111827"
+                />
+              </div>
+
+              {/* Color Preview */}
+              {brandColorArray.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {brandColorArray.map((color, idx) => (
+                    <div
+                      key={idx}
+                      className="h-8 w-8 rounded-lg border-2 border-black"
+                      style={{ backgroundColor: color }}
+                      title={color}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <TagInput
+                label="Target markets"
+                values={profile.target_markets}
+                onChange={(values) => setProfile((p) => ({ ...p, target_markets: values }))}
+                placeholder="Add market focus"
+              />
+              <TagInput
+                label="Targeted keywords"
+                values={profile.targeted_keywords}
+                onChange={(keywords) => setProfile((p) => ({ ...p, targeted_keywords: keywords }))}
+                placeholder="Press Enter to add keyword"
+              />
+
+              <GuidelinesUploader
+                url={profile.brand_guidelines_url}
+                uploading={guidelineUploading}
+                onUpload={async (file) => {
+                  if (!file || !userId) return;
+                  setGuidelineUploading(true);
+                  try {
+                    const path = `guidelines/${userId}-${Date.now()}-${file.name}`.replace(/\s+/g, "-").toLowerCase();
+                    const { error } = await supabase.storage.from("brand-guidelines").upload(path, file, {
+                      contentType: file.type,
+                      upsert: true
+                    });
+                    if (error) throw error;
+                    const { data } = supabase.storage.from("brand-guidelines").getPublicUrl(path);
+                    setProfile((prev) => ({ ...prev, brand_guidelines_url: data?.publicUrl ?? null }));
+                    setStatus("Brand guidelines uploaded.");
+                  } catch (err: any) {
+                    setStatus(err.message || "Upload failed");
+                  } finally {
+                    setGuidelineUploading(false);
+                  }
+                }}
+                onRemove={async () => {
+                  setProfile((prev) => ({ ...prev, brand_guidelines_url: null }));
+                }}
+              />
+
+              <m.button
+                whileTap={{ scale: 0.98 }}
+                type="submit"
+                disabled={saving}
+                className="btn-primary flex items-center justify-center gap-3 disabled:opacity-60"
+              >
+                {saving ? <Loader2 className="h-6 w-6 animate-spin" /> : <Save className="h-6 w-6" />}
+                {saving ? "Saving..." : "Save Profile"}
+              </m.button>
+
+              {userEmail && <p className="text-sm font-bold text-black/60">Signed in as {userEmail}</p>}
+            </div>
+          </form>
+
+          {/* Sidebar */}
+          <div className="space-y-8 lg:col-span-2">
+            {/* Profile Status */}
+            <div className="relative group">
+              <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-3xl bg-cream border-3 border-black transition-transform group-hover:translate-x-3 group-hover:translate-y-3" />
+              <div className="relative rounded-3xl border-3 border-black bg-white p-6">
+                <p className="font-black text-xl text-ink">Profile Status</p>
+                {profileComplete ? (
+                  <div className="mt-4">
+                    <div className="inline-flex items-center gap-2 rounded-full border-2 border-black bg-success px-4 py-2 text-sm font-bold text-white">
+                      ✓ Complete
+                    </div>
+                    <p className="mt-3 text-sm font-medium text-black/70">
+                      Your profile is ready. The Ad Builder will use this data.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-4">
+                    <div className="inline-flex items-center gap-2 rounded-full border-2 border-black bg-mustard px-4 py-2 text-sm font-bold text-ink">
+                      Incomplete
+                    </div>
+                    <p className="mt-3 text-sm font-medium text-black/70">Missing: {missingFields.join(", ")}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Personalized Trends */}
+            <div className="relative group">
+              <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-3xl bg-forest border-3 border-black transition-transform group-hover:translate-x-3 group-hover:translate-y-3" />
+              <div className="relative rounded-3xl border-3 border-black bg-white p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Sparkles className="h-5 w-5 text-forest" />
+                  <p className="font-black text-xl text-ink">Live Trends</p>
+                </div>
+
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={handleGenerateTrends}
                     disabled={!profileComplete || generatingTrends}
-                    className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex-1 rounded-full border-3 border-black bg-forest px-4 py-3 text-sm font-bold text-white shadow-hard-sm disabled:opacity-40 disabled:cursor-not-allowed hover:-translate-y-1 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
                   >
-                    {generatingTrends ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-4 w-4" />
-                    )}
-                    Generate trends
+                    {generatingTrends ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Generate"}
                   </button>
                   <button
                     type="button"
                     onClick={fetchTrends}
                     disabled={trendsLoading || generatingTrends}
-                    className="inline-flex items-center gap-2 rounded-full border border-black/10 px-4 py-2 text-sm font-semibold text-black/70 shadow-sm transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-full border-3 border-black bg-white px-4 py-3 text-sm font-bold text-ink shadow-hard-sm disabled:opacity-40 disabled:cursor-not-allowed hover:-translate-y-1 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
                   >
                     {trendsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-                    Refresh
                   </button>
                 </div>
-              </div>
-            </div>
 
-            {!profileComplete && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-900">
-                <p className="font-semibold">Complete your profile to unlock personalized research.</p>
-                <p className="mt-1 text-xs">Missing: {missingFields.join(", ")}</p>
-              </div>
-            )}
+                {!profileComplete && (
+                  <div className="mt-4 rounded-xl border-2 border-black bg-amber-50 p-4 text-sm">
+                    <p className="font-bold text-amber-900">Complete your profile first</p>
+                  </div>
+                )}
 
-            {trendStatus && (
-              <div className="flex items-center gap-2 rounded-xl bg-black/5 px-3 py-2 text-xs text-black/70">
-                <AlertCircle className="h-3.5 w-3.5 text-punch" />
-                <span>{trendStatus}</span>
-              </div>
-            )}
+                {trendStatus && (
+                  <div className="mt-4 rounded-xl border-2 border-black bg-black/5 p-3 text-xs font-bold text-black/70">
+                    {trendStatus}
+                  </div>
+                )}
 
-            <div className="space-y-3">
-              {trendsLoading ? (
-                <div className="flex items-center gap-2 text-sm text-black/50">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Fetching your latest trend signals...
-                </div>
-              ) : trends.length > 0 ? (
-                <div className="grid gap-3 md:grid-cols-2">
-                  {trends.map((trend) => (
-                    <article key={trend.id} className="rounded-2xl border border-black/10 bg-white/80 p-4 shadow-card">
-                      <p className="text-xs uppercase tracking-tight text-black/40">{trend.category || trend.platform}</p>
-                      <h3 className="mt-1 text-sm font-semibold text-ink">{trend.name}</h3>
-                      <p className="mt-2 text-xs text-black/60">
-                        {trend.description ?? "No description available."}
-                      </p>
-                      <div className="mt-3 text-[11px] text-black/40">
-                        <span>Source: {trend.source ?? trend.platform ?? "SERP"}</span>
+                {trends.length > 0 && (
+                  <div className="mt-4 space-y-2 max-h-[400px] overflow-y-auto">
+                    {trends.map((trend) => (
+                      <div key={trend.id} className="rounded-xl border-2 border-black bg-cream p-3">
+                        <p className="text-xs font-black uppercase text-black/40">{trend.platform}</p>
+                        <p className="text-sm font-bold text-ink">{trend.name}</p>
+                        <p className="text-xs text-black/60 mt-1 line-clamp-2">{trend.description}</p>
                       </div>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-black/50">No personalized trends yet. Generate to see live culture cues.</p>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </section>
+          </div>
         </div>
       )}
     </div>
@@ -390,52 +451,57 @@ export default function CompanyPage() {
 function Field({
   label,
   value,
-  onChange
+  onChange,
+  placeholder
 }: {
   label: string;
   value: string;
+  placeholder?: string;
   onChange: (v: string) => void;
 }) {
   return (
-    <label className="block space-y-2 text-sm font-medium text-ink">
+    <label className="block space-y-2 text-base font-bold text-ink">
       {label}
       <input
         value={value}
+        placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-ink shadow-inner focus:border-punch focus:outline-none"
+        className="input-field"
       />
     </label>
   );
 }
 
-function computeMissingFields(profile: CompanyProfileForm) {
-  const missing: string[] = [];
-  if (!profile.company_name.trim()) missing.push("company name");
-  if (!profile.tagline.trim()) missing.push("tagline");
-  if (!profile.mission_statement.trim()) missing.push("mission");
-  if (!profile.company_description.trim()) missing.push("description");
-  if (!profile.target_markets || profile.target_markets.length === 0) missing.push("target markets");
-  if (!profile.targeted_keywords || profile.targeted_keywords.length === 0) missing.push("keywords");
-  return missing;
+function TextArea({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="block space-y-2 text-base font-bold text-ink">
+      {label}
+      <textarea value={value} onChange={(e) => onChange(e.target.value)} className="input-field min-h-[120px]" rows={3} />
+    </label>
+  );
 }
 
-function TextareaField({
+function Select({
   label,
   value,
+  options,
   onChange
 }: {
   label: string;
   value: string;
+  options: { value: string; label: string }[];
   onChange: (v: string) => void;
 }) {
   return (
-    <label className="block space-y-2 text-sm font-medium text-ink">
+    <label className="block space-y-2 text-base font-bold text-ink">
       {label}
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-ink shadow-inner focus:border-punch focus:outline-none min-h-[120px]"
-      />
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="input-field appearance-none">
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }
@@ -476,24 +542,21 @@ function TagInput({
   };
 
   return (
-    <div className="space-y-2 text-sm font-medium text-ink">
+    <div className="space-y-2 text-base font-bold text-ink">
       <span className="block">{label}</span>
-      <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-inner space-y-3">
+      <div className="rounded-2xl border-3 border-black bg-white p-4 space-y-3">
         <div className="flex flex-wrap gap-2">
-          {values.length === 0 && (
-            <span className="text-xs font-normal text-black/40">No keywords added yet.</span>
-          )}
+          {values.length === 0 && <span className="text-sm font-medium text-black/40">No items added yet.</span>}
           {values.map((keyword, index) => (
             <span
               key={`${keyword}-${index}`}
-              className="inline-flex items-center gap-1 rounded-full bg-punch/10 px-3 py-1 text-xs font-semibold text-punch border border-punch/20"
+              className="inline-flex items-center gap-1 rounded-full bg-punch px-3 py-1 text-sm font-bold text-white border-2 border-black"
             >
               {keyword}
               <button
                 type="button"
                 onClick={() => removeKeyword(index)}
-                className="text-base leading-none text-punch/70 hover:text-punch"
-                aria-label={`Remove ${keyword}`}
+                className="text-lg leading-none text-white/80 hover:text-white"
               >
                 ×
               </button>
@@ -505,38 +568,10 @@ function TagInput({
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className="w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-sm font-normal text-ink focus:border-punch focus:outline-none"
+          className="w-full rounded-xl border-3 border-black bg-white px-4 py-3 text-base font-bold text-ink focus:outline-none focus:ring-4 focus:ring-mustard/30"
         />
       </div>
     </div>
-  );
-}
-function Select({
-  label,
-  value,
-  onChange,
-  options
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <label className="block space-y-2 text-sm font-medium text-ink">
-      {label}
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-ink shadow-inner focus:border-punch focus:outline-none"
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }
 
@@ -552,11 +587,13 @@ function GuidelinesUploader({
   onRemove: () => Promise<void> | void;
 }) {
   return (
-    <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-inner">
-      <p className="text-sm font-medium text-ink">Brand guidelines</p>
-      <p className="text-xs text-black/60">Upload a PDF or deck that explains your brand voice, layouts, or design guardrails.</p>
-      <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white shadow-pill">
-        <Upload className="h-4 w-4" />
+    <div className="rounded-2xl border-3 border-black bg-white p-5">
+      <p className="text-base font-bold text-ink">Brand guidelines</p>
+      <p className="text-sm font-medium text-black/60 mt-1">
+        Upload a PDF or deck with your brand voice and design guardrails.
+      </p>
+      <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full border-3 border-black bg-ink px-5 py-3 text-sm font-bold text-white shadow-hard-sm hover:-translate-y-1 transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none">
+        <Upload className="h-5 w-5" />
         <span>{uploading ? "Uploading..." : "Upload Guidelines"}</span>
         <input
           type="file"
@@ -567,21 +604,32 @@ function GuidelinesUploader({
         />
       </label>
       {url ? (
-        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-black/10 bg-black/5 px-3 py-2 text-xs text-black/80">
-          <a href={url} target="_blank" rel="noreferrer" className="font-semibold text-punch underline">
-            View current guidelines
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border-2 border-black bg-cream px-4 py-3 text-sm font-bold">
+          <a href={url} target="_blank" rel="noreferrer" className="text-punch underline">
+            View guidelines
           </a>
           <button
             type="button"
             onClick={() => onRemove()}
-            className="inline-flex items-center gap-1 rounded-full border border-black/10 px-3 py-1 text-xs font-semibold text-black/70 hover:bg-black/5"
+            className="inline-flex items-center gap-1 rounded-full border-2 border-black bg-white px-3 py-1 text-xs font-bold hover:bg-punch hover:text-white transition-colors"
           >
             <Trash2 className="h-3.5 w-3.5" /> Remove
           </button>
         </div>
       ) : (
-        <p className="mt-2 text-xs text-black/50">No file uploaded yet.</p>
+        <p className="mt-2 text-sm font-medium text-black/50">No file uploaded yet.</p>
       )}
     </div>
   );
+}
+
+function computeMissingFields(profile: CompanyProfileForm) {
+  const missing: string[] = [];
+  if (!profile.company_name.trim()) missing.push("company name");
+  if (!profile.tagline.trim()) missing.push("tagline");
+  if (!profile.mission_statement.trim()) missing.push("mission");
+  if (!profile.company_description.trim()) missing.push("description");
+  if (!profile.target_markets || profile.target_markets.length === 0) missing.push("target markets");
+  if (!profile.targeted_keywords || profile.targeted_keywords.length === 0) missing.push("keywords");
+  return missing;
 }
