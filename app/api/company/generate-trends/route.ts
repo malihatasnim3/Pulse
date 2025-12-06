@@ -19,7 +19,8 @@ const schema = z.object({
       targeted_keywords: z.array(z.string().min(1)).min(1),
       target_markets: z.array(z.string().min(1)).min(1),
       brand_colors: z.array(z.string()).optional().default([]),
-      platform_preference: z.string().optional().default("tiktok")
+      platform_preference: z.string().optional().default("tiktok"),
+      brand_guidelines_url: z.string().url().optional().nullable()
     })
     .partial()
     .optional()
@@ -134,7 +135,8 @@ export async function POST(req: NextRequest) {
       targeted_keywords: profilePayload.targeted_keywords ?? [],
       target_markets: profilePayload.target_markets ?? [],
       brand_colors: profilePayload.brand_colors ?? [],
-      platform_preference: profilePayload.platform_preference ?? "tiktok"
+      platform_preference: profilePayload.platform_preference ?? "tiktok",
+      brand_guidelines_url: profilePayload.brand_guidelines_url ?? null
     } satisfies CompanyProfile & { targeted_keywords: string[]; target_markets: string[] };
 
     resolvedProfile = fallbackProfile;
