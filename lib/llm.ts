@@ -234,9 +234,9 @@ function parseJsonResponse(raw: string): GenerateAdSuiteResult {
 async function ensureBucketExists(client: SupabaseClient, bucket: string) {
   const { data, error } = await client.storage.getBucket(bucket);
   if (data) return;
-  const storageError = (error ?? null) as { status?: number; statusCode?: string } | null;
+  const storageError = (error as Partial<{ status: number; statusCode: string }>) || null;
   const status = typeof storageError?.status === "number" ? storageError.status : undefined;
-  const statusCode = storageError?.statusCode;
+  const statusCode = typeof storageError?.statusCode === "string" ? storageError.statusCode : undefined;
   const isNotFound = status === 404 || statusCode === "404";
   const isForbidden = status === 403 || statusCode === "403";
   if (isForbidden) {
