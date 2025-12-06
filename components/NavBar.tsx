@@ -18,13 +18,13 @@ export function NavBar() {
 
   return (
     <div className="fixed bottom-8 left-1/2 z-50 -translate-x-1/2">
-      <nav className="flex items-center gap-2 rounded-full border-3 border-black bg-white px-3 py-3 shadow-hard">
-        <Link href="/" className="group flex items-center gap-2 rounded-full px-3 py-2 text-lg font-black text-ink transition-colors hover:bg-black/5">
-          <Sparkles className="h-5 w-5 text-punch transition-transform group-hover:-rotate-12" />
+      <nav className="flex items-center gap-2 rounded-full border-3 border-black bg-punch px-3 py-3 shadow-[10px_10px_0px_0px_#000]">
+        <Link href="/" className="group flex items-center gap-2 rounded-full px-3 py-2 text-lg font-black text-white transition-colors hover:bg-white/10">
+          <Sparkles className="h-5 w-5 text-white transition-transform group-hover:-rotate-12" />
           <span className="hidden sm:block">Pulse</span>
         </Link>
         
-        <div className="mx-1 h-6 w-0.5 bg-black/10" />
+        <div className="mx-1 h-6 w-0.5 bg-white/20" />
 
         <div className="flex items-center gap-1">
           {links.map((link) => {
@@ -40,8 +40,8 @@ export function NavBar() {
                   whileTap={{ scale: 0.95 }}
                   className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition-colors ${
                     active 
-                      ? "bg-punch text-white border-2 border-black shadow-hard-sm" 
-                      : "text-ink hover:bg-black/5"
+                      ? "bg-white text-punch border-2 border-black shadow-hard-sm" 
+                      : "text-white hover:bg-white/10"
                   }`}
                 >
                   <link.icon className="h-4 w-4" />
