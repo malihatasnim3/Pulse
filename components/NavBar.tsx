@@ -8,6 +8,7 @@ import { Sparkles, LineChart, History, Wand2, Flame } from "lucide-react";
 const links = [
   { href: "/trends", label: "Trends", icon: Flame },
   { href: "/ad-builder", label: "Ad Builder", icon: Wand2 },
+  { href: "/company", label: "Company", icon: LineChart },
   { href: "/analytics", label: "Analytics", icon: LineChart },
   { href: "/ad-history", label: "Ad History", icon: History }
 ];

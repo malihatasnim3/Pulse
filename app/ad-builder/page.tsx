@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { m } from "framer-motion";
 import { Sparkles, Loader2 } from "lucide-react";
 import { ProductImageUploader } from "@/components/ProductImageUploader";
 import { AdVariantCard } from "@/components/AdVariantCard";
 import type { GenerateAdSuiteResult } from "@/lib/llm";
+import { createBrowserSupabaseClient } from "@/lib/supabase";
 
 type FormState = {
   companyName: string;
@@ -34,11 +35,13 @@ const defaultForm: FormState = {
 };
 
 export default function AdBuilderPage() {
+  const supabase = useMemo(() => createBrowserSupabaseClient(), []);
   const [form, setForm] = useState<FormState>(defaultForm);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GenerateAdSuiteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
+  const [profileStatus, setProfileStatus] = useState<string | null>(null);
 
   const brandColorArray = useMemo(
     () =>
@@ -48,6 +51,36 @@ export default function AdBuilderPage() {
         .filter(Boolean),
     [form.brandColors]
   );
+
+  useEffect(() => {
+    const maybePrefillFromProfile = async () => {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+      if (!session?.user) return;
+      const { data: profile, error } = await supabase
+        .from("company_profiles")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+      if (error || !profile) {
+        if (error && error.code !== "PGRST116") {
+          setProfileStatus("Could not load company profile.");
+        }
+        return;
+      }
+      setForm((s) => ({
+        ...s,
+        companyName: profile.company_name || s.companyName,
+        product: profile.product || s.product,
+        audience: profile.audience || s.audience,
+        goal: profile.goal || s.goal,
+        platform: (profile.platform_preference as FormState["platform"]) || s.platform,
+        brandColors: (profile.brand_colors || []).join(", ") || s.brandColors
+      }));
+      setProfileStatus("Loaded saved company profile.");
+    };
+    maybePrefillFromProfile();
+  }, [supabase]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -149,6 +182,8 @@ export default function AdBuilderPage() {
             value={form.productImageUrls}
             onChange={(urls) => setForm((s) => ({ ...s, productImageUrls: urls }))}
           />
+
+          {profileStatus && <p className="text-xs text-black/60">{profileStatus}</p>}
 
           <m.button
             whileTap={{ scale: 0.98 }}

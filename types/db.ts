@@ -46,3 +46,15 @@ export type CreativePattern = {
   example_usage: string | null;
   created_at: string;
 };
+
+export type CompanyProfile = {
+  id?: string;
+  user_id: string;
+  company_name: string;
+  brand_colors: string[] | null;
+  product: string | null;
+  audience: string | null;
+  goal: string | null;
+  platform_preference: string | null;
+  created_at?: string;
+};

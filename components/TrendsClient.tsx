@@ -19,6 +19,11 @@ export function TrendsClient({ trends, patterns }: Props) {
         </div>
       </div>
 
+      {trends.length === 0 && (
+        <div className="rounded-xl border border-black/10 bg-black/5 p-4 text-sm text-black/70">
+          No trends found. Check Supabase table `trend_topics` or `/api/sync-trends` ingestion logs.
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {trends.map((trend, idx) => (
           <m.div
@@ -50,6 +55,9 @@ export function TrendsClient({ trends, patterns }: Props) {
           <div className="rounded-full bg-punch px-3 py-1 text-xs font-semibold text-white shadow-pill">Patterns</div>
           <p className="text-sm text-black/60">Reusable creative shapes the LLM leans on.</p>
         </div>
+        {patterns.length === 0 && (
+          <p className="mt-2 text-sm text-black/60">No creative patterns yet. Seed `creative_patterns` in Supabase.</p>
+        )}
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
           {patterns.map((pattern, idx) => (
             <m.div
