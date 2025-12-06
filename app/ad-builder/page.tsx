@@ -43,6 +43,7 @@ export default function AdBuilderPage() {
   const [error, setError] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
   const [profileStatus, setProfileStatus] = useState<string | null>(null);
+  const [loadingText, setLoadingText] = useState("Understand Request");
 
   const brandColorArray = useMemo(
     () =>
@@ -52,6 +53,17 @@ export default function AdBuilderPage() {
         .filter(Boolean),
     [form.brandColors]
   );
+
+  useEffect(() => {
+    if (!loading) return;
+    const texts = ["Understand Request", "Pulling Latest Trends", "Comprehending Trends", "Generating Ads"];
+    let i = 0;
+    const interval = setInterval(() => {
+      i = (i + 1) % texts.length;
+      setLoadingText(texts[i]);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [loading]);
 
   useEffect(() => {
     const maybePrefillFromProfile = async () => {
@@ -200,7 +212,7 @@ export default function AdBuilderPage() {
               className="btn-primary flex items-center justify-center gap-3 disabled:opacity-60"
             >
               {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Sparkles className="h-6 w-6" />}
-              {loading ? "Summoning..." : "Lock My Choice In"}
+              {loading ? loadingText : "Generate Custom Ads"}
             </m.button>
 
             {error && <p className="text-lg font-bold text-punch">{error}</p>}

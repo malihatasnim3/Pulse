@@ -21,7 +21,7 @@ export function NavBar() {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <Link href="/" className="group flex items-center gap-2 text-lg font-semibold text-ink">
           <Sparkles className="h-5 w-5 text-punch transition-transform group-hover:-rotate-6" />
-          <span>Pulse Ads Lab</span>
+          <span>Pulse</span>
         </Link>
         <nav className="flex items-center gap-2 rounded-full bg-white/80 px-2 py-1 shadow-pill">
           {links.map((link) => {

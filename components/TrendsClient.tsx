@@ -14,11 +14,11 @@ export function TrendsClient({ trends, patterns }: Props) {
 
   const filteredTrends = useMemo(() => {
     if (selectedPlatform === "all") return trends;
-    return trends.filter((t) => t.platform.toLowerCase() === selectedPlatform.toLowerCase());
+    return trends.filter((t) => (t.platform || "").toLowerCase() === selectedPlatform.toLowerCase());
   }, [trends, selectedPlatform]);
 
   const platforms = useMemo(() => {
-    const allPlatforms = new Set(trends.map((t) => t.platform.toLowerCase()));
+    const allPlatforms = new Set(trends.map((t) => (t.platform || "unknown").toLowerCase()));
     return ["all", ...Array.from(allPlatforms)];
   }, [trends]);
 
