@@ -7,6 +7,7 @@ import {
   type TrendSummary
 } from "@/lib/llm";
 import { createServiceRoleSupabaseClient } from "@/lib/supabase";
+import type { CreativePattern, TrendTopic } from "@/types/db";
 
 const schema = z.object({
   companyName: z.string().min(1),
@@ -18,7 +19,8 @@ const schema = z.object({
   tone: z.string().min(1),
   format: z.literal("static_image"),
   brandColors: z.array(z.string()).default([]),
-  productImageUrls: z.array(z.string()).default([])
+  productImageUrls: z.array(z.string()).default([]),
+  userId: z.string().uuid().optional().nullable()
 });
 
 export async function POST(req: NextRequest) {
@@ -30,14 +32,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const body = parsed.data;
+  const { userId: maybeUserId, ...payload } = parsed.data;
+  const userId = maybeUserId || null;
 
   // 1) Upsert project
   const { data: existingProject, error: findError } = await supabase
     .from("ad_projects")
     .select("*")
-    .eq("name", body.name)
-    .eq("company_name", body.companyName)
+    .eq("name", payload.name)
+    .eq("company_name", payload.companyName)
     .maybeSingle();
 
   if (findError) {
@@ -49,12 +52,12 @@ export async function POST(req: NextRequest) {
     const { data: updated, error: updateError } = await supabase
       .from("ad_projects")
       .update({
-        product: body.product,
-        audience: body.audience,
-        goal: body.goal,
-        platform_preference: body.platform,
-        brand_colors: body.brandColors,
-        product_image_urls: body.productImageUrls
+        product: payload.product,
+        audience: payload.audience,
+        goal: payload.goal,
+        platform_preference: payload.platform,
+        brand_colors: payload.brandColors,
+        product_image_urls: payload.productImageUrls
       })
       .eq("id", existingProject.id)
       .select("id")
@@ -67,14 +70,14 @@ export async function POST(req: NextRequest) {
     const { data: inserted, error: insertError } = await supabase
       .from("ad_projects")
       .insert({
-        company_name: body.companyName,
-        name: body.name,
-        product: body.product,
-        audience: body.audience,
-        goal: body.goal,
-        platform_preference: body.platform,
-        brand_colors: body.brandColors,
-        product_image_urls: body.productImageUrls
+        company_name: payload.companyName,
+        name: payload.name,
+        product: payload.product,
+        audience: payload.audience,
+        goal: payload.goal,
+        platform_preference: payload.platform,
+        brand_colors: payload.brandColors,
+        product_image_urls: payload.productImageUrls
       })
       .select("id")
       .maybeSingle();
@@ -84,31 +87,53 @@ export async function POST(req: NextRequest) {
     projectId = inserted.id;
   }
 
-  // 2) Fetch latest trends and patterns
-  const { data: trendRows } = await supabase
-    .from("trend_topics")
-    .select("*")
-    .or(`platform.eq.${body.platform},platform.is.null`)
-    .order("created_at", { ascending: false })
-    .limit(12);
+  // 2) Fetch personalized trends + patterns
+  let trendRows: TrendTopic[] | null = null;
 
-  const { data: patternRows } = await supabase
+  if (userId) {
+    const { data: personalTrends, error: personalError } = await supabase
+      .from("trend_topics")
+      .select("*")
+      .contains("raw_data", { user_id: userId })
+      .order("created_at", { ascending: false })
+      .limit(12);
+    if (personalError) {
+      console.warn("[generate-ad] personal trends query failed", personalError);
+    } else if (personalTrends && personalTrends.length > 0) {
+      trendRows = personalTrends;
+    }
+  }
+
+  if (!trendRows) {
+    const { data: fallbackTrends } = await supabase
+      .from("trend_topics")
+      .select("*")
+      .or(`platform.eq.${payload.platform},platform.is.null`)
+      .order("created_at", { ascending: false })
+      .limit(12);
+    trendRows = fallbackTrends || [];
+  }
+
+  const { data: patternRows, error: patternError } = await supabase
     .from("creative_patterns")
     .select("*")
-    .or(`platform.eq.${body.platform},platform.is.null`)
+    .or(`platform.eq.${payload.platform},platform.is.null`)
     .order("created_at", { ascending: false })
     .limit(12);
+  if (patternError) {
+    console.warn("[generate-ad] creative pattern query failed", patternError);
+  }
 
   const trends: TrendSummary[] =
     trendRows?.map((t) => ({
       name: t.name,
-      platform: t.platform ?? body.platform,
+      platform: t.platform ?? payload.platform,
       category: t.category,
       description: t.description
     })) || [];
 
   const patterns: PatternSummary[] =
-    patternRows?.map((p) => ({
+    (patternRows as CreativePattern[] | null | undefined)?.map((p) => ({
       name: p.name,
       platform: p.platform,
       description: p.description,
@@ -116,7 +141,7 @@ export async function POST(req: NextRequest) {
     })) || [];
 
   const llmInput: GenerateAdSuiteInput = {
-    ...body,
+    ...payload,
     trends,
     patterns
   };
@@ -130,10 +155,10 @@ export async function POST(req: NextRequest) {
       .from("ad_generations")
       .insert({
         project_id: projectId,
-        platform: body.platform,
-        tone: body.tone,
-        format: body.format,
-        brief: { ...body, trends, patterns },
+        platform: payload.platform,
+        tone: payload.tone,
+        format: payload.format,
+        brief: { ...payload, trends, patterns },
         strategy: aiResult.strategy,
         ads: aiResult.variants
       })
