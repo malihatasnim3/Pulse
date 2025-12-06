@@ -1,0 +1,28 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Testing
+coverage
+
+# Next.js
+.next/
+out/
+
+# Production
+build
+
+# Misc
+.DS_Store
+*.log
+*.local
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+*.swp
+.env
+.env.local
+.env.development
+.env.production
+.env.test

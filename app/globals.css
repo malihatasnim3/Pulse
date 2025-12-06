@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  background: #f7f2e7;
+  color: #1f1d2b;
+  min-height: 100%;
+}
+
+body {
+  font-feature-settings: "liga" 1, "kern" 1;
+}
+
+.pattern-bg {
+  background-image: radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.05) 1px, transparent 0);
+  background-size: 20px 20px;
+}
+
+.glass {
+  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.card-tilt {
+  transform: rotate(-1deg);
+}
+
+.pill {
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
+}
