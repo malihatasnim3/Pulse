@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { AlertCircle } from "lucide-react";
-import { m } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
-import { createBrowserSupabaseClient } from "@/lib/supabase";
 import type { CompanyProfile, CreativePattern, TrendTopic } from "@/types/db";
+import { useEffect, useMemo, useState } from "react";
+
+import { AlertCircle } from "lucide-react";
+import Link from "next/link";
+import { createBrowserSupabaseClient } from "@/lib/supabase";
+import { m } from "framer-motion";
 
 type Props = {
   trends: TrendTopic[];
